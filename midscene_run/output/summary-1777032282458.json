@@ -1,0 +1,20 @@
+{
+  "summary": {
+    "total": 1,
+    "successful": 1,
+    "failed": 0,
+    "partialFailed": 0,
+    "notExecuted": 0,
+    "totalDuration": 61916,
+    "generatedAt": "2026/4/24 20:05:44"
+  },
+  "results": [
+    {
+      "script": "..\\..\\scripts\\templates\\ebay-search.yaml",
+      "success": true,
+      "resultType": "success",
+      "report": "..\\report\\ebay-search.html",
+      "duration": 61916
+    }
+  ]
+}

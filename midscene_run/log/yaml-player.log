@@ -1,0 +1,19 @@
+[2026-04-24T20:04:42.473+08:00] setting output by script path D:\Ai_scratch\midscene_run\output\ebay-search-1777032282472.json
+[2026-04-24T20:04:49.726+08:00] playing step 0, flowItem={"ai":"点击页面顶部的搜索输入框，激活搜索框"}
+[2026-04-24T20:05:06.906+08:00] playing step 1, flowItem={"ai":"在搜索框输入 'Headphones' 并按回车键"}
+[2026-04-24T20:05:35.863+08:00] playing step 2, flowItem={"sleep":3000}
+[2026-04-24T20:05:38.877+08:00] playing step 3, flowItem={"ai":"验证页面显示搜索结果列表"}
+[2026-04-24T20:35:38.581+08:00] setting output by script path D:\Ai_scratch\midscene_run\output\test-ebay-1777034138580.json
+[2026-04-24T20:35:43.504+08:00] playing step 0, flowItem={"ai":"在搜索框输入 \"Headphones\" 并按回车"}
+[2026-04-24T20:36:51.473+08:00] setting output by script path D:\Ai_scratch\midscene_run\output\test-ebay-1777034211472.json
+[2026-04-24T20:36:56.727+08:00] playing step 0, flowItem={"ai":"在搜索框输入 \"Headphones\" 并按回车"}
+[2026-04-24T20:37:26.528+08:00] playing step 1, flowItem={"sleep":3000}
+[2026-04-24T20:44:34.618+08:00] setting output by script path D:\Ai_scratch\midscene_run\output\test-minimax-1777034674617.json
+[2026-04-24T20:44:39.648+08:00] playing step 0, flowItem={"ai":"在搜索框输入 \"Headphones\""}
+[2026-04-24T20:45:17.753+08:00] setting output by script path D:\Ai_scratch\midscene_run\output\test-minimax-1777034717753.json
+[2026-04-24T20:45:23.056+08:00] playing step 0, flowItem={"ai":"在搜索框输入 \"Headphones\""}
+[2026-04-24T20:58:31.535+08:00] setting output by script path D:\Ai_scratch\midscene_run\output\test-deepseek-1777035511535.json
+[2026-04-24T20:58:36.488+08:00] playing step 0, flowItem={"ai":"在搜索框输入 \"Headphones\""}
+[2026-04-24T23:07:09.196+08:00] setting output by script path D:\Ai_scratch\midscene_run\output\httpbin-test-1777043229195.json
+[2026-04-24T23:07:11.925+08:00] playing step 0, flowItem={"sleep":2000}
+[2026-04-24T23:07:13.940+08:00] playing step 1, flowItem={"ai":"在页面上随便说点什么，确认页面已加载"}

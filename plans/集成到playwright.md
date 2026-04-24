@@ -1,0 +1,440 @@
+import { PackageManagerTabs } from '@theme';
+
+# 集成到 Playwright
+
+[Playwright.js](https://playwright.com/) 是由微软开发的一个开源自动化库，主要用于对网络应用程序进行端到端测试（end-to-end test）和网页抓取。
+
+与 Playwright 的集成方式有以下两种方式：
+
+* 直接用脚本方式集成和调用 Midscene Agent，适合快速体验、原型开发、数据抓取和自动化脚本等场景。
+* 在 Playwright 的测试用例中集成 Midscene，适合需要执行 UI 测试的场景。
+
+## 配置 AI 模型服务
+
+将你的模型配置写入环境变量，可参考 [模型策略](/model-strategy.md) 了解更多细节。
+
+```bash
+export MIDSCENE_MODEL_BASE_URL="https://替换为你的模型服务地址/v1"
+export MIDSCENE_MODEL_API_KEY="替换为你的 API Key"
+export MIDSCENE_MODEL_NAME="替换为你的模型名称"
+export MIDSCENE_MODEL_FAMILY="替换为你的模型系列"
+```
+
+更多配置信息请参考 [模型策略](/model-strategy.md) 和 [模型配置](/model-config.md)。
+
+## 直接集成 Midscene Agent
+
+:::info 样例项目
+
+你可以在这里看到向 Playwright 集成的样例项目：[https://github.com/web-infra-dev/midscene-example/blob/main/playwright-demo](https://github.com/web-infra-dev/midscene-example/blob/main/playwright-demo)
+
+:::
+
+### 第一步：安装依赖
+
+<PackageManagerTabs command="install @midscene/web playwright @playwright/test tsx --save-dev" />
+
+### 第二步：编写脚本
+
+编写下方代码，保存为 `./demo.ts`
+
+```typescript
+import { chromium } from 'playwright';
+import { PlaywrightAgent } from '@midscene/web/playwright';
+import 'dotenv/config'; // read environment variables from .env file
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+Promise.resolve(
+  (async () => {
+    const browser = await chromium.launch({
+      headless: true, // 'true' means we can't see the browser window
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+
+    const page = await browser.newPage();
+    await page.setViewportSize({
+      width: 1280,
+      height: 768,
+    });
+    await page.goto('https://www.ebay.com');
+    await sleep(5000); // 👀 init Midscene agent
+    const agent = new PlaywrightAgent(page);
+
+    // 👀 type keywords, perform a search
+    await agent.aiAct('type "Headphones" in search box, hit Enter');
+
+    // 👀 wait for the loading
+    await agent.aiWaitFor('there is at least one headphone item on page');
+    // or you may use a plain sleep:
+    // await sleep(5000);
+
+    // 👀 understand the page content, find the items
+    const items = await agent.aiQuery(
+      '{itemTitle: string, price: Number}[], find item in list and corresponding price',
+    );
+    console.log('headphones in stock', items);
+
+    const isMoreThan1000 = await agent.aiBoolean(
+      'Is the price of the headphones more than 1000?',
+    );
+    console.log('isMoreThan1000', isMoreThan1000);
+
+    const price = await agent.aiNumber(
+      'What is the price of the first headphone?',
+    );
+    console.log('price', price);
+
+    const name = await agent.aiString(
+      'What is the name of the first headphone?',
+    );
+    console.log('name', name);
+
+    const location = await agent.aiLocate(
+      'What is the location of the first headphone?',
+    );
+    console.log('location', location);
+
+    // 👀 assert by AI
+    await agent.aiAssert('There is a category filter on the left');
+
+    // 👀 click on the first item
+    await agent.aiTap('the first item in the list');
+
+    await browser.close();
+  })(),
+);
+```
+
+更多 Agent 的 API 讲解请参考 [API 参考](/zh/api.md#interaction-methods)。
+
+### 第三步：运行
+
+使用 `tsx` 来运行，你会看到命令行打印出了耳机的商品信息：
+
+```bash
+# run
+npx tsx demo.ts
+
+# 命令行应该有如下输出
+#  [
+#   {
+#     itemTitle: 'JBL Tour Pro 2 - True wireless Noise Cancelling earbuds with Smart Charging Case',
+#     price: 551.21
+#   },
+#   {
+#     itemTitle: 'Soundcore Space One无线耳机40H ANC播放时间2XStronger语音还原',
+#     price: 543.94
+#   }
+# ]
+```
+
+### 第四步：查看运行报告
+
+当上面的命令执行成功后，会在控制台输出：`Midscene - report file updated: /path/to/report/some_id.html`，通过浏览器打开该文件即可看到报告。
+
+## 在 Playwright 的测试用例中集成 Midscene
+
+这里我们假设你已经拥有一个集成了 Playwright 的测试项目。
+
+:::info 样例项目
+
+你可以在这里看到向 Playwright 集成的样例项目：[https://github.com/web-infra-dev/midscene-example/blob/main/playwright-testing-demo](https://github.com/web-infra-dev/midscene-example/blob/main/playwright-testing-demo)
+
+:::
+
+### 第一步：新增依赖，更新配置文件
+
+新增依赖
+
+<PackageManagerTabs command="install @midscene/web --save-dev" />
+
+更新 playwright.config.ts
+
+```diff
+export default defineConfig({
+  testDir: './e2e',
++ timeout: 90 * 1000,
++ reporter: [["list"], ["@midscene/web/playwright-reporter", { type: "merged" }]],
+});
+```
+
+Reporter 配置项说明：
+
+* `type`: 报告模式，可选值为 `merged`（默认）或 `separate`。`merged` 表示多个测试用例生成一个合并报告，`separate` 表示为每个测试用例生成独立报告。
+* `outputFormat`: 控制报告的生成格式。`'single-html'`（默认）将所有截图作为 base64 内嵌到单个 HTML 文件中。`'html-and-external-assets'` 将截图保存为独立的 PNG 文件到子目录，适用于报告文件过大的场景。**注意**：使用 `'html-and-external-assets'` 时，报告必须通过 HTTP 服务器访问，无法直接使用 `file://` 协议打开（因为浏览器的 CORS 限制会阻止从 file 协议加载相对路径的本地图片）。进入报告目录后运行以下命令之一：
+
+  * 使用 Node.js：`npx serve`
+  * 使用 Python：`python -m http.server` 或 `python3 -m http.server`
+
+  然后通过 `http://localhost:3000`（或终端显示的端口）访问报告。
+
+### 第二步：扩展 `test` 实例
+
+把下方代码保存为 `./e2e/fixture.ts`;
+
+```typescript
+import { test as base } from '@playwright/test';
+import type { PlayWrightAiFixtureType } from '@midscene/web/playwright';
+import { PlaywrightAiFixture } from '@midscene/web/playwright';
+
+export const test = base.extend<PlayWrightAiFixtureType>(
+  PlaywrightAiFixture({
+    waitForNetworkIdleTimeout: 2000, // 可选, 交互过程中等待网络空闲的超时时间, 默认值为 2000ms, 设置为 0 则禁用超时
+  }),
+);
+```
+
+`PlaywrightAiFixture()` 也支持传入 `PlaywrightAgent` 的全部配置，因此你可以在创建 fixture 时统一配置共享的 Agent 行为。`testId`、`reportFileName`、`groupName`、`groupDescription` 这类由 fixture 管理的元信息仍会自动生成。
+
+### 第三步：编写测试用例
+
+完整的交互、查询和辅助 API 请参考 [Agent API 参考](/zh/api.md#interaction-methods)。如果需要调用更底层的能力，可以使用 `agentForPage` 获取 `PageAgent` 实例，再直接调用对应的方法：
+
+```typescript
+test('case demo', async ({ agentForPage, page }) => {
+  const agent = await agentForPage(page);
+
+  await agent.recordToReport();
+  const logContent = agent._unstableLogContent();
+  console.log(logContent);
+});
+```
+
+#### 示例代码
+
+```typescript title="./e2e/ebay-search.spec.ts"
+import { expect } from '@playwright/test';
+import { test } from './fixture';
+
+test.beforeEach(async ({ page }) => {
+  page.setViewportSize({ width: 400, height: 905 });
+  await page.goto('https://www.ebay.com');
+  await page.waitForLoadState('networkidle');
+});
+
+test('search headphone on ebay', async ({
+  ai,
+  aiQuery,
+  aiAssert,
+  aiInput,
+  aiTap,
+  aiScroll,
+  aiWaitFor,
+  aiRightClick,
+  recordToReport,
+}) => {
+  // 使用 aiInput 输入搜索关键词
+  await aiInput('Headphones', '搜索框');
+
+  // 使用 aiTap 点击搜索按钮
+  await aiTap('搜索按钮');
+
+  // 等待搜索结果加载
+  await aiWaitFor('搜索结果列表已加载', { timeoutMs: 5000 });
+
+  // 使用 aiScroll 滚动到页面底部
+  await aiScroll(
+    {
+      scrollType: 'untilBottom',
+    },
+    '搜索结果列表',
+  );
+
+  // 使用 aiQuery 获取商品信息
+  const items =
+    await aiQuery<Array<{ title: string; price: number }>>(
+      '获取搜索结果中的商品标题和价格',
+    );
+
+  console.log('headphones in stock', items);
+  expect(items?.length).toBeGreaterThan(0);
+
+  // 使用 aiAssert 验证筛选功能
+  await aiAssert('界面左侧有类目筛选功能');
+
+  // 使用 recordToReport 记录当前状态
+  await recordToReport('搜索结果', { content: '耳机搜索的最终结果' });
+});
+```
+
+更多 Agent 的 API 讲解请参考 [API 参考](/zh/api.md#interaction-methods)。
+
+### 第四步：运行测试用例
+
+```bash
+npx playwright test ./e2e/ebay-search.spec.ts
+```
+
+### 第五步：查看测试报告
+
+当上面的命令执行成功后，会在控制台输出：`Midscene - report file updated: ./current_cwd/midscene_run/report/some_id.html`，通过浏览器打开该文件即可看到报告。
+
+## Advanced
+
+### 关于在新标签页打开
+
+每个 Agent 实例都与对应的页面唯一绑定，为了方便开发者调试，Midscene 默认拦截了新 tab 的页面（如点击一个带有 `target="_blank"` 属性的链接），将其改为在当前页面打开。
+
+如果你想恢复在新标签页打开的行为，你可以设置 `forceSameTabNavigation` 选项为 `false`，但相应的，你需要为新标签页创建一个 Agent 实例。
+
+```typescript
+const mid = new PlaywrightAgent(page, {
+  forceSameTabNavigation: false,
+});
+```
+
+### 连接远程 Playwright 浏览器并接入 Midscene Agent
+
+:::info 示例项目
+
+你可以在这里找到远程 Playwright 集成的示例项目：[https://github.com/web-infra-dev/midscene-example/tree/main/remote-playwright-demo](https://github.com/web-infra-dev/midscene-example/tree/main/remote-playwright-demo)
+
+:::
+
+当你已经在自有基础设施或供应商服务里运行浏览器时，可通过连接远程 Playwright 服务复用这些浏览器，让实例更贴近目标环境、避免重复启动，同时保持相同的 Midscene AI 自动化能力。
+
+#### 前置依赖
+
+<PackageManagerTabs command="install playwright @playwright/test @midscene/web --save-dev" />
+
+#### 获取 CDP WebSocket URL
+
+你可以从多种来源获取 CDP WebSocket URL：
+
+* **BrowserBase**：在 https://browserbase.com 注册并获取你的 CDP URL
+* **Browserless**：使用 https://browserless.io 或运行你自己的实例
+* **本地 Chrome**：使用 `--remote-debugging-port=9222` 参数运行 Chrome，然后使用 `ws://localhost:9222/devtools/browser/...`
+* **Docker**：在 Docker 容器中运行 Chrome 并暴露调试端口
+
+#### 代码示例
+
+```typescript
+import { chromium } from 'playwright';
+import { PlaywrightAgent } from '@midscene/web/playwright';
+
+// 来自远程浏览器服务的 CDP WebSocket URL
+const cdpWsUrl = 'ws://your-remote-browser.com/devtools/browser/your-session-id';
+
+// 连接并选取页面
+const browser = await chromium.connectOverCDP(cdpWsUrl);
+const context = browser.contexts()[0];
+const page = context.pages()[0] || await context.newPage();
+
+// 创建 Midscene Agent（用法与本地 Playwright agent 一致）
+const agent = new PlaywrightAgent(page);
+
+// 像平常一样调用 AI 方法
+await agent.aiAction('跳转到 https://example.com');
+await agent.aiAction('点击登录按钮');
+
+// 清理
+await agent.destroy();
+await browser.close();
+```
+
+连接完成后，后续的 `PlaywrightAgent` 使用方式与本地启动的浏览器保持一致。
+
+### 扩展自定义交互动作
+
+使用 `customActions` 选项，结合 `defineAction` 定义的自定义交互动作，可以扩展 Agent 的动作空间。这些动作会追加在内置动作之后，方便 Agent 在规划阶段调用。
+
+```typescript
+import { getMidsceneLocationSchema, z } from '@midscene/core';
+import { defineAction } from '@midscene/core/device';
+
+const ContinuousClick = defineAction({
+  name: 'continuousClick',
+  description: 'Click the same target repeatedly',
+  paramSchema: z.object({
+    locate: getMidsceneLocationSchema(),
+    count: z
+      .number()
+      .int()
+      .positive()
+      .describe('How many times to click'),
+  }),
+  async call(param) {
+    const { locate, count } = param;
+    console.log('click target center', locate.center);
+    console.log('click count', count);
+    // 在这里结合 locate + count 实现自定义点击逻辑
+  },
+});
+
+const agent = new PlaywrightAgent(page, {
+  customActions: [ContinuousClick],
+});
+
+await agent.aiAct('点击红色按钮五次');
+```
+
+更多关于自定义动作的细节，请参考 [集成到任意界面](/zh/integrate-with-any-interface.md)。
+
+## FAQ
+
+### 浏览器界面持续闪动
+
+在本地可视化界面中遇到持续闪烁，通常是因为 viewport 的 `deviceScaleFactor` 与系统/浏览器的像素比不匹配（常见于高分辨率或 Retina 屏幕）。
+
+该闪动不会影响 Midscene 的截图或自动化运行，但会影响本地预览体验。解决方法：将 `deviceScaleFactor` 设置为与浏览器的 `window.devicePixelRatio` 一致。
+
+```typescript
+// Playwright：不支持像 Puppeteer 一样使用 0 表示自动适配
+const page = await browser.newPage({
+  deviceScaleFactor: 2, // 请把这里的数字 2 替换为你的 window.devicePixelRatio
+})
+```
+
+如果不确定浏览器的像素比，可在任意页面按下 F12 打开控制台，输入 `window.devicePixelRatio` 查看；或在 Chrome 地址栏粘贴下面内容并回车以弹窗显示当前值：
+
+```plain
+data:text/html,<script>alert(`deviceScaleFactor of your browser: ${devicePixelRatio}`)</script>
+```
+
+### 自定义网络超时
+
+当在网页上执行某个操作后，Midscene 会自动等待网络空闲。这是为了确保自动化过程的稳定性。如果等待超时，不会发生任何事情。
+
+默认的超时时间配置如下：
+
+1. 如果是页面跳转，则等待页面加载完成，默认超时时间为 5000ms
+2. 如果是点击、输入等操作，则等待网络空闲，默认超时时间为 2000ms
+
+当然，你可以通过配置参数修改默认超时时间，或者关闭这个功能：
+
+* 使用 [Agent](/zh/api.md#%E6%9E%84%E9%80%A0%E5%99%A8) 上的 `waitForNetworkIdleTimeout` 和 `waitForNavigationTimeout` 参数
+* 使用 [Yaml](/zh/automate-with-scripts-in-yaml.md#web-%E9%83%A8%E5%88%86) 脚本和 [PlaywrightAiFixture](/zh/integrate-with-playwright.md#%E7%AC%AC%E4%BA%8C%E6%AD%A5%E6%89%A9%E5%B1%95-test-%E5%AE%9E%E4%BE%8B) 中的 `waitForNetworkIdle` 参数
+
+### 截图时报 `waiting for fonts to load` 或 `page.screenshot: Timeout ... exceeded`
+
+如果你在 Playwright 环境里看到类似下面的报错：
+
+```plain
+page.screenshot: Timeout 10000ms exceeded.
+Call log:
+- taking page screenshot
+- waiting for fonts to load...
+```
+
+这通常不是 Midscene 自身逻辑的问题，而是 Playwright 在截图时默认会等待页面字体加载完成。在某些 CI、容器或网络环境中，字体资源可能加载很慢，甚至一直无法完成，最终导致截图超时。
+
+可以通过添加下面的环境变量来规避：
+
+```bash
+export PW_TEST_SCREENSHOT_NO_FONTS_READY=1
+```
+
+如果你是在一条命令里临时执行，也可以这样写：
+
+```bash
+PW_TEST_SCREENSHOT_NO_FONTS_READY=1 <你的命令>
+```
+
+更多背景可参考 Playwright 的 issue：[\[BUG\] Page.screenshot method hangs indefinitely](https://github.com/microsoft/playwright/issues/28995)。
+
+## 更多
+
+* 更多 Agent 的 API 文档请参考 [API 参考](/zh/api.md#interaction-methods)。
+* Playwright 的 API 文档请参考 [Playwright Agent API](/zh/web-api-reference.md#playwright-agent)。
+* 样例项目：[直接集成 Playwright](https://github.com/web-infra-dev/midscene-example/blob/main/playwright-demo)，[Playwright 测试集成](https://github.com/web-infra-dev/midscene-example/blob/main/playwright-testing-demo)，[远程 Playwright 集成](https://github.com/web-infra-dev/midscene-example/tree/main/remote-playwright-demo)

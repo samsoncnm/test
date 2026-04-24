@@ -1,0 +1,91 @@
+[2026-04-24T20:04:42.477+08:00] launching browser with viewport, headed false viewport { width: 1440, height: 768, deviceScaleFactor: 0 } args [
+  '--disable-features=HttpsFirstBalancedModeAutoEnable',
+  '--disable-features=PasswordLeakDetection',
+  '--disable-save-password-bubble',
+  '--user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"'
+] preference {
+  headed: false,
+  keepWindow: false,
+  reportFileName: 'ebay-search',
+  cache: undefined
+}
+[2026-04-24T20:04:44.597+08:00] goto https://www.ebay.com/
+[2026-04-24T20:04:47.711+08:00] waitForNetworkIdle 2000
+[2026-04-24T20:35:38.584+08:00] launching browser with viewport, headed false viewport { width: 1440, height: 768, deviceScaleFactor: 0 } args [
+  '--disable-features=HttpsFirstBalancedModeAutoEnable',
+  '--disable-features=PasswordLeakDetection',
+  '--disable-save-password-bubble',
+  '--user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"'
+] preference {
+  headed: false,
+  keepWindow: false,
+  reportFileName: 'test-ebay',
+  cache: undefined
+}
+[2026-04-24T20:35:39.154+08:00] goto https://www.ebay.com
+[2026-04-24T20:35:41.489+08:00] waitForNetworkIdle 2000
+[2026-04-24T20:36:51.477+08:00] launching browser with viewport, headed false viewport { width: 1440, height: 768, deviceScaleFactor: 0 } args [
+  '--disable-features=HttpsFirstBalancedModeAutoEnable',
+  '--disable-features=PasswordLeakDetection',
+  '--disable-save-password-bubble',
+  '--user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"'
+] preference {
+  headed: false,
+  keepWindow: false,
+  reportFileName: 'test-ebay',
+  cache: undefined
+}
+[2026-04-24T20:36:52.101+08:00] goto https://www.ebay.com
+[2026-04-24T20:36:54.717+08:00] waitForNetworkIdle 2000
+[2026-04-24T20:44:34.621+08:00] launching browser with viewport, headed false viewport { width: 1440, height: 768, deviceScaleFactor: 0 } args [
+  '--disable-features=HttpsFirstBalancedModeAutoEnable',
+  '--disable-features=PasswordLeakDetection',
+  '--disable-save-password-bubble',
+  '--user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"'
+] preference {
+  headed: false,
+  keepWindow: false,
+  reportFileName: 'test-minimax',
+  cache: undefined
+}
+[2026-04-24T20:44:35.221+08:00] goto https://www.ebay.com
+[2026-04-24T20:44:37.629+08:00] waitForNetworkIdle 2000
+[2026-04-24T20:45:17.756+08:00] launching browser with viewport, headed false viewport { width: 1440, height: 768, deviceScaleFactor: 0 } args [
+  '--disable-features=HttpsFirstBalancedModeAutoEnable',
+  '--disable-features=PasswordLeakDetection',
+  '--disable-save-password-bubble',
+  '--user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"'
+] preference {
+  headed: false,
+  keepWindow: false,
+  reportFileName: 'test-minimax',
+  cache: undefined
+}
+[2026-04-24T20:45:18.397+08:00] goto https://www.ebay.com
+[2026-04-24T20:45:21.047+08:00] waitForNetworkIdle 2000
+[2026-04-24T20:58:31.538+08:00] launching browser with viewport, headed false viewport { width: 1440, height: 768, deviceScaleFactor: 0 } args [
+  '--disable-features=HttpsFirstBalancedModeAutoEnable',
+  '--disable-features=PasswordLeakDetection',
+  '--disable-save-password-bubble',
+  '--user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"'
+] preference {
+  headed: false,
+  keepWindow: false,
+  reportFileName: 'test-deepseek',
+  cache: undefined
+}
+[2026-04-24T20:58:32.119+08:00] goto https://www.ebay.com
+[2026-04-24T20:58:34.479+08:00] waitForNetworkIdle 2000
+[2026-04-24T23:07:09.200+08:00] launching browser with viewport, headed false viewport { width: 1440, height: 768, deviceScaleFactor: 0 } args [
+  '--disable-features=HttpsFirstBalancedModeAutoEnable',
+  '--disable-features=PasswordLeakDetection',
+  '--disable-save-password-bubble',
+  '--user-agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"'
+] preference {
+  headed: false,
+  keepWindow: false,
+  reportFileName: 'httpbin-test',
+  cache: undefined
+}
+[2026-04-24T23:07:10.163+08:00] goto https://httpbin.org/html
+[2026-04-24T23:07:11.018+08:00] waitForNetworkIdle 2000

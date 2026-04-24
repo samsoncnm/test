@@ -1,0 +1,20 @@
+{
+  "summary": {
+    "total": 1,
+    "successful": 1,
+    "failed": 0,
+    "partialFailed": 0,
+    "notExecuted": 0,
+    "totalDuration": 27728,
+    "generatedAt": "2026/4/24 20:45:45"
+  },
+  "results": [
+    {
+      "script": "..\\..\\scripts\\templates\\test-minimax.yaml",
+      "success": true,
+      "resultType": "success",
+      "report": "..\\report\\test-minimax.html",
+      "duration": 27728
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "summary": {
+    "total": 1,
+    "successful": 1,
+    "failed": 0,
+    "partialFailed": 0,
+    "notExecuted": 0,
+    "totalDuration": 21993,
+    "generatedAt": "2026/4/24 23:07:31"
+  },
+  "results": [
+    {
+      "script": "..\\..\\scripts\\templates\\httpbin-test.yaml",
+      "success": true,
+      "resultType": "success",
+      "report": "..\\report\\httpbin-test.html",
+      "duration": 21993
+    }
+  ]
+}

@@ -1,10 +1,39 @@
 {
-  "scripts": {},
+  "name": "nl-script",
+  "version": "0.1.0",
+  "description": "自然语言脚本探索与固定脚本执行系统",
+  "type": "module",
+  "bin": {
+    "nl-script": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli/index.ts",
+    "start": "node dist/cli/index.js",
+    "lint": "biome check ./src",
+    "lint:fix": "biome check --write ./src",
+    "postinstall": "pnpm build"
+  },
+  "dependencies": {
+    "@midscene/web": "^1.7.5",
+    "@midscene/core": "^1.7.5",
+    "@midscene/cli": "^1.7.5",
+    "playwright": "^1.49.0",
+    "@playwright/test": "^1.49.0",
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5",
+    "uuid": "^10.0.0",
+    "yaml": "^2.6.1",
+    "picocolors": "^1.1.1"
+  },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.12",
-    "@midscene/web": "^1.7.4",
-    "@playwright/test": "^1.59.1",
-    "playwright": "^1.59.1",
-    "tsx": "^4.21.0"
+    "@types/node": "^22.10.0",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.7.2",
+    "tsx": "^4.19.2",
+    "@biomejs/biome": "^1.9.4"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
