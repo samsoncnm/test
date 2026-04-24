@@ -1,18 +1,10 @@
 {
-  "scripts": {
-    "generate": "tsx src/script-generator/cli.ts generate",
-    "exec": "tsx src/script-generator/cli.ts exec",
-    "generate:help": "tsx src/script-generator/cli.ts --help",
-    "report:agg": "tsx src/token-counter/cli.ts aggregate"
-  },
+  "scripts": {},
   "devDependencies": {
     "@biomejs/biome": "^2.4.12",
     "@midscene/web": "^1.7.4",
     "@playwright/test": "^1.59.1",
     "playwright": "^1.59.1",
     "tsx": "^4.21.0"
-  },
-  "dependencies": {
-    "commander": "^14.0.3"
   }
 }

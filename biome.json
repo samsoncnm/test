@@ -31,22 +31,5 @@
 			}
 		}
 	},
-	"overrides": [
-		{
-			"includes": [
-				"src/script-generator/code-renderer.ts",
-				"src/script-generator/prompt-builder.ts"
-			],
-			"linter": {
-				"rules": {
-					"style": {
-						"useTemplate": "off"
-					}
-				}
-			},
-			"formatter": {
-				"enabled": false
-			}
-		}
-	]
+	"overrides": []
 }

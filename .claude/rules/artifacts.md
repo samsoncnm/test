@@ -20,11 +20,11 @@
 
 - **KISS 优先**：每新增一个抽象层必须问"不加这个能跑吗？"，答不上来就不加
 - **over-engineering 信号**：嵌套超过 3 层、超过 5 个泛型参数、超过 200 行的函数 — 立即触发重构
-- **迭代器优于手写循环**：`collect().iter().filter().map()` 链优于手动 push 循环
+- **迭代器优于手写循环**：`collect().iter().filter().map()` 链优于手动 push 循环 *(仅适用于 Rust 项目)*
 - **早期返回优于深度嵌套**：提前 `return None`，减少嵌套分支
-- **&str 优于 String**：`fn(&str)` 优于 `fn(String)`，避免不必要的 clone
-- **约束不简化**：lazy_static、.context()、exit code 传播、fallback 命令等硬约束禁止"优化"掉
-- **验证命令**：`cargo fmt && cargo clippy && cargo test` — 任何代码变更后必须运行
+- **&str 优于 String**：`fn(&str)` 优于 `fn(String)`，避免不必要的 clone *(仅适用于 Rust 项目)*
+- **约束不简化**：lazy_static、.context()、exit code 传播、fallback 命令等硬约束禁止"优化"掉 *(仅适用于 Rust 项目)*
+- **验证命令**：`cargo fmt && cargo clippy && cargo test` — 任何代码变更后必须运行 *(仅适用于 Rust 项目；TS/Python 项目参照 CLAUDE.MD 规则 5)*
 
 ## 原则 10：依赖必须可复现 (Reproducible Dependencies)
 
