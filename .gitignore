@@ -25,3 +25,9 @@ node_modules/
 
 # Midscene runtime artifacts (auto-generated during execution)
 midscene_run/
+
+# Local scripts (may contain credentials)
+scripts/
+
+# Local plans & docs
+plans/
