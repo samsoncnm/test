@@ -31,3 +31,9 @@ scripts/
 
 # Local plans & docs
 plans/
+
+# Claude agent config (local only)
+.claude/
+
+# Cursor settings (local only)
+.cursor/
