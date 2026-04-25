@@ -3,7 +3,9 @@
  * 交互式探索模式：aiAct 驱动 + save/abort/继续 处理
  */
 
+import * as fs from "node:fs";
 import { EOL } from "node:os";
+import path from "node:path";
 import { stdin as input, stdout as output } from "node:process";
 import {
   closeSession,
@@ -12,6 +14,7 @@ import {
 } from "../../core/midscene-adapter.js";
 import { freezeToYaml } from "../../core/yaml-freezer.js";
 import { saveScript, scriptExists } from "../../storage/script-store.js";
+import { stripAnsi } from "../../utils/ansi-strip.js";
 import { log, logAbort, logExplore, logSave, logSection } from "../../utils/logger.js";
 
 function prompt(question: string): Promise<string> {
@@ -23,7 +26,10 @@ function prompt(question: string): Promise<string> {
       if (resolved) return;
       resolved = true;
       const raw = Buffer.concat(chunks).toString("utf8");
-      const line = raw.replace(/\r?\n$/, "").trim();
+      // 移除 ANSI 转义码（PowerShell 光标移动序列等），防止凝固进 YAML
+      const line = stripAnsi(raw)
+        .replace(/\r?\n$/, "")
+        .trim();
       output.write(EOL);
       resolve(line);
     };
@@ -34,6 +40,41 @@ function prompt(question: string): Promise<string> {
       }
     });
   });
+}
+
+/**
+ * 扫描 midscene_run/report/ 目录，找到与当前会话最匹配的报告文件
+ * deepLocate 时 agent.reportFile 可能为空，但报告已写入磁盘
+ */
+function findLatestReport(lastReportHint?: string): string | undefined {
+  const reportDir = path.join(process.cwd(), "midscene_run", "report");
+  if (!fs.existsSync(reportDir)) return undefined;
+
+  // 如果有上一步的报告路径提示，优先用它
+  if (lastReportHint) {
+    const absHint = path.isAbsolute(lastReportHint)
+      ? lastReportHint
+      : path.resolve(process.cwd(), lastReportHint);
+    if (fs.existsSync(absHint)) return absHint;
+  }
+
+  // 否则找最新的 nl-script-*.html 文件（基于我们的 reportFileName）
+  const nlScriptPattern = /^nl-script-\d+\.html/;
+  let latestMtime = 0;
+  let latestFile: string | undefined;
+
+  for (const file of fs.readdirSync(reportDir)) {
+    if (nlScriptPattern.test(file)) {
+      const fullPath = path.join(reportDir, file);
+      const stat = fs.statSync(fullPath);
+      if (stat.mtimeMs > latestMtime) {
+        latestMtime = stat.mtimeMs;
+        latestFile = fullPath;
+      }
+    }
+  }
+
+  return latestFile;
 }
 
 export async function runExplore(params: {
@@ -128,11 +169,17 @@ export async function runExplore(params: {
         const description = await prompt("请输入脚本描述（直接回车跳过）: ");
 
         if (!session) break;
+        // 获取报告文件路径（优先用 agent.reportFile，fallback 到扫描最近报告）
+        let reportHtmlPath =
+          session.latestReportFile || findLatestReport(session.log.steps.at(-1)?.reportFile);
+        if (reportHtmlPath && !path.isAbsolute(reportHtmlPath)) {
+          reportHtmlPath = path.resolve(process.cwd(), reportHtmlPath);
+        }
         const yamlContent = await freezeToYaml({
           name,
           description,
           explorationLog: session.log,
-          reportHtmlPath: session.latestReportFile,
+          reportHtmlPath,
         });
 
         const meta = await saveScript({ name, description, yamlContent });

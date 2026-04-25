@@ -70,24 +70,32 @@ export async function freezeToYaml(params: {
 
   /**
    * 将单个 yamlFlow 条目序列化（处理 locate 对象 → 字符串）
+   * 返回 undefined 如果条目全为空（空 ai: "" 等）
    */
-  function serializeYamlFlowItem(item: YamlFlowItem): Record<string, unknown> {
+  function serializeYamlFlowItem(item: YamlFlowItem): Record<string, unknown> | undefined {
     const result: Record<string, unknown> = {};
+    let hasActionKey = false;
+
     for (const [key, val] of Object.entries(item)) {
       if (key === "locate") {
         result[key] = normalizeLocate(val) ?? "";
+      } else if (key === "ai" && (val === "" || val === undefined)) {
+        // 空 ai: "" 跳过（通用指令无实质内容）
+      } else if (val === "" || val === undefined) {
+        // 其他非空动作类型键（如 aiInput/aiTap）保留，值设为空字符串
+        hasActionKey = true;
+        result[key] = "";
       } else {
+        hasActionKey = true;
         result[key] = val;
       }
     }
-    return result;
+
+    return hasActionKey ? result : undefined;
   }
 
   const { explorationLog, reportHtmlPath } = params;
   const flow: Record<string, unknown>[] = [];
-
-  // 维护最近一个 yamlFlow 条目（来自 Plan 任务），供后续 ActionSpace 任务合并 value
-  let lastYamlFlowItem: YamlFlowItem | null = null;
 
   // 优先从报告 JSON 解析 yamlFlow
   if (reportHtmlPath) {
@@ -101,13 +109,17 @@ export async function freezeToYaml(params: {
         continue;
       }
 
+      // ✅ ActionSpace 任务不单独处理（Plan 任务的 yamlFlow 已包含完整动作信息）
+
       // ✅ Plan 任务：提取 yamlFlow 条目（记录 locate 信息）
       if (exec.subType === "Plan") {
         if (exec.yamlFlow?.length) {
           for (const item of exec.yamlFlow) {
             const serialized = serializeYamlFlowItem(item);
-            flow.push(serialized);
-            lastYamlFlowItem = item;
+            if (serialized) {
+              // 跳过空条目（空 ai: "" 等）
+              flow.push(serialized);
+            }
           }
         }
         // 最后一个 Plan：shouldContinuePlanning=false 时，outputOutput 是断言结果
@@ -117,49 +129,9 @@ export async function freezeToYaml(params: {
         continue;
       }
 
-      // ✅ ActionSpace 任务（Input / Tap / DoubleClick 等）：补充 value 到上一个 yamlFlow 条目
-      if (exec.actions && exec.actions.length > 0) {
-        for (const action of exec.actions) {
-          const normalizedType = normalizeActionType(action.type);
-          const param = action.param ?? {};
+      // ActionSpace 任务不单独处理（Plan 任务的 yamlFlow 已包含完整动作信息）
 
-          // 有 value → 尝试合并到上一个 yamlFlow 条目（如 aiInput 补充 value）
-          if (param.value !== undefined) {
-            if (lastYamlFlowItem) {
-              // 合并：保留 yamlFlow 的 locate，补充 value
-              const merged: Record<string, unknown> = {};
-              for (const [k, v] of Object.entries(lastYamlFlowItem)) {
-                merged[k] = v;
-              }
-              merged.value = param.value;
-              // locate 对象 → 字符串
-              if ("locate" in merged) {
-                merged.locate = normalizeLocate(merged.locate) ?? "";
-              }
-              // 覆盖 flow 最后一项
-              flow[flow.length - 1] = merged;
-            } else {
-              // 没有上一个 yamlFlow，直接用 actions 数据构造
-              const item: Record<string, unknown> = { [normalizedType]: "" };
-              if (param.value !== undefined) item.value = param.value;
-              if (param.locate) item.locate = normalizeLocate(param.locate) ?? "";
-              flow.push(item);
-            }
-          } else {
-            // 无 value（如 aiTap）：直接使用 yamlFlow 的 locate（ActionSpace param.locate 是对象）
-            const locateValue =
-              normalizeLocate(param.locate) ??
-              (lastYamlFlowItem && "locate" in lastYamlFlowItem
-                ? normalizeLocate(lastYamlFlowItem.locate)
-                : undefined) ??
-              exec.userInstruction;
-            flow.push({ [normalizedType]: "", locate: locateValue });
-          }
-        }
-        continue;
-      }
-
-      // 降级兜底
+      // 降级兜底（只有非 Plan/Locate 的其他 subType）
       if (exec.userInstruction) {
         flow.push({ ai: exec.userInstruction });
       }
@@ -171,6 +143,7 @@ export async function freezeToYaml(params: {
     for (const step of explorationLog.steps) {
       if (step.result !== "success") continue;
       const action = step.action.trim();
+      if (!action) continue;
 
       if (/等待|wait|sleep/i.test(action)) {
         flow.push({ sleep: 3000 });
