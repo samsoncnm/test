@@ -8,7 +8,7 @@ import pc from "picocolors";
 import { logSection } from "../utils/logger.js";
 import { runExplore } from "./commands/explore.js";
 import { runScript } from "./commands/run.js";
-import { listScripts, removeScript } from "./commands/scripts.js";
+import { cleanCache, clearAllCache, listScripts, removeScript } from "./commands/scripts.js";
 
 const program = new Command();
 
@@ -79,6 +79,31 @@ scriptsCmd
   .action(async (scriptName) => {
     try {
       await removeScript(scriptName);
+    } catch (err) {
+      console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+scriptsCmd
+  .command("cache-clean")
+  .description("删除指定脚本的缓存文件")
+  .argument("<script-name>", "脚本名称")
+  .action(async (scriptName) => {
+    try {
+      await cleanCache(scriptName);
+    } catch (err) {
+      console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+scriptsCmd
+  .command("cache-clear")
+  .description("清空 midscene_run/cache/ 目录下所有缓存文件")
+  .action(async () => {
+    try {
+      await clearAllCache();
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
