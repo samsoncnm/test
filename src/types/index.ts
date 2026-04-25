@@ -2,6 +2,79 @@
  * 核心类型定义
  */
 
+/**
+ * 单个 task 的 token 消耗
+ * 匹配 task.usage 和 task.searchAreaUsage 字段结构
+ * 注意：searchAreaUsage 只有 prompt_tokens / total_tokens，completion_tokens / cachedTokens 可能为空
+ */
+export interface TaskUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cachedTokens: number;
+  timeCostMs: number;
+  modelName: string;
+  intent: string;
+}
+
+/**
+ * 单个 step 的 metrics（对应一个 aiAct 调用，即一组相同 userInstruction 的 task）
+ */
+export interface StepMetrics {
+  userInstruction: string;
+  /** Plan 任务决定整体状态 */
+  status: "finished" | "failed";
+  /** 墙钟耗时 = timing.end - timing.start（包含截图+推理+执行） */
+  wallTimeMs: number;
+  /** AI 推理耗时 = Σ timing.cost（仅 Plan/Locate 任务累加） */
+  aiTimeMs: number;
+  /** 这个 step 包含多少个子 task */
+  subTasks: number;
+  /** 主模型 usage（Plan 任务有） */
+  usage?: TaskUsage;
+  /** Locate 模型的 searchAreaUsage 累加（deepLocate 时有值） */
+  locateUsage?: TaskUsage;
+  /** 最终凝固的动作序列 */
+  actions?: Array<{
+    type: string;
+    description: string;
+  }>;
+  /** 每个子 task 后的截图路径（相对路径） */
+  screenshots?: string[];
+}
+
+/**
+ * 完整 metrics 报告
+ */
+export interface MetricsReport {
+  version: 1;
+  scriptName: string;
+  generatedAt: string;
+  mode: "explore" | "run";
+  environment: {
+    sdkVersion: string;
+    startUrl?: string;
+  };
+  summary: {
+    /** 有 usage 的 step 数 */
+    totalSteps: number;
+    /** 墙钟总耗时（毫秒） */
+    totalWallTimeMs: number;
+    /** AI 推理总耗时（毫秒） */
+    totalAiTimeMs: number;
+    totalTokens: number;
+    totalCachedTokens: number;
+    modelBreakdown: Array<{
+      modelName: string;
+      intent: string;
+      steps: number;
+      totalTokens: number;
+      totalAiTimeMs: number;
+    }>;
+  };
+  steps: StepMetrics[];
+}
+
 export interface ScriptMeta {
   id: string;
   name: string;
@@ -68,6 +141,19 @@ export interface ParsedExecution {
   outputOutput?: string;
   /** 是否继续规划（最后一步 Plan 任务为 false），存于 task.output.shouldContinuePlanning */
   shouldContinuePlanning?: boolean;
+  /** 原始 task JSON 对象，用于 metrics 提取 */
+  _rawTask?: {
+    status?: string;
+    subType?: string;
+    param?: Record<string, unknown>;
+    timing?: { start?: number; end?: number; cost?: number };
+    usage?: Record<string, unknown>;
+    searchAreaUsage?: Record<string, unknown>;
+    output?: Record<string, unknown>;
+    recorder?: Array<{ screenshot?: { path?: string } }>;
+    uiContext?: Record<string, unknown>;
+    log?: { rawResponse?: string };
+  };
 }
 
 export interface ExplorationLog {

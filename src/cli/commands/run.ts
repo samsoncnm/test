@@ -4,12 +4,23 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { parse, stringify } from "yaml";
+import { printMetricsSummary, saveMetrics } from "../../storage/metrics-store.js";
 import { getScriptPath } from "../../storage/script-store.js";
+import type { MetricsReport } from "../../types/index.js";
 import { log, logRun } from "../../utils/logger.js";
+import {
+  parseMetricsFromExecutions,
+  parseReportFile,
+  waitForExecutionJson,
+} from "../../utils/report-parser.js";
 
-export async function runScript(scriptName: string): Promise<void> {
+export async function runScript(
+  scriptName: string,
+  options?: { headful?: boolean; keepWindow?: boolean },
+): Promise<void> {
   const yamlPath = await getScriptPath(scriptName);
 
   if (!yamlPath) {
@@ -19,28 +30,51 @@ export async function runScript(scriptName: string): Promise<void> {
   logRun(scriptName);
   log("info", `脚本路径: ${yamlPath}`);
 
-  // 解析为绝对路径，确保 midscene CLI 能找到文件
   const absoluteYamlPath = resolve(yamlPath);
   const projectRoot = process.cwd();
 
-  return new Promise((resolve, reject) => {
-    const midsceneBin = join(projectRoot, "node_modules", "@midscene", "cli", "bin", "midscene");
+  const needsInject = options?.headful || options?.keepWindow;
+  const originalContent = needsInject ? readFileSync(absoluteYamlPath, "utf8") : null;
 
-    // 尝试本地 midscene CLI，fallback 到 npx
-    let cmd: string;
-    let args: string[];
+  if (needsInject && originalContent !== null) {
+    const doc = parse(originalContent) as Record<string, unknown>;
+    if (!doc.agent) doc.agent = {};
+    const agent = doc.agent as Record<string, unknown>;
+    if (options.headful) agent.headed = true;
+    if (options.keepWindow) agent.keepWindow = true;
+    writeFileSync(absoluteYamlPath, stringify(doc));
+  }
 
-    if (existsSync(midsceneBin)) {
-      cmd = "node";
-      args = [midsceneBin, absoluteYamlPath];
-    } else {
-      cmd = "npx";
-      args = ["midscene", absoluteYamlPath];
+  try {
+    await runMidscene(projectRoot, absoluteYamlPath, scriptName);
+  } finally {
+    if (needsInject && originalContent !== null) {
+      writeFileSync(absoluteYamlPath, originalContent);
     }
+  }
+}
 
+async function runMidscene(
+  projectRoot: string,
+  yamlPath: string,
+  scriptName: string,
+): Promise<void> {
+  const midsceneBin = join(projectRoot, "node_modules", "@midscene", "cli", "bin", "midscene");
+
+  let cmd: string;
+  let args: string[];
+
+  if (existsSync(midsceneBin)) {
+    cmd = "node";
+    args = [midsceneBin, yamlPath];
+  } else {
+    cmd = "npx";
+    args = ["midscene", yamlPath];
+  }
+
+  return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       stdio: ["ignore", "pipe", "pipe"],
-      shell: process.platform === "win32",
       cwd: projectRoot,
     });
 
@@ -60,9 +94,39 @@ export async function runScript(scriptName: string): Promise<void> {
       }
     });
 
-    child.on("close", (code) => {
+    child.on("close", async (code) => {
       if (code === 0) {
         log("success", "脚本执行完成");
+
+        try {
+          const htmlFileName = `${scriptName}.html`;
+          const reportDir = join(projectRoot, "midscene_run", "report");
+          const htmlPath = join(reportDir, htmlFileName);
+
+          if (existsSync(htmlPath)) {
+            await waitForExecutionJson(reportDir, htmlFileName, 3000);
+
+            const executions = parseReportFile(htmlPath);
+            if (executions.length > 0) {
+              const metricsData = parseMetricsFromExecutions({ executions });
+
+              const metricsReport: MetricsReport = {
+                version: 1,
+                scriptName,
+                generatedAt: new Date().toISOString(),
+                mode: "run",
+                ...metricsData,
+              };
+
+              const metricsPath = await saveMetrics(metricsReport);
+              printMetricsSummary(metricsReport);
+              log("info", `指标报告: ${metricsPath}`);
+            }
+          }
+        } catch {
+          // metrics 收集失败静默跳过
+        }
+
         resolve();
       } else {
         reject(new Error(`脚本执行失败，退出码: ${code}`));

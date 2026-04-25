@@ -13,9 +13,12 @@ import {
   executeAndLog,
 } from "../../core/midscene-adapter.js";
 import { freezeToYaml } from "../../core/yaml-freezer.js";
+import { printMetricsSummary, saveMetrics } from "../../storage/metrics-store.js";
 import { saveScript, scriptExists } from "../../storage/script-store.js";
+import type { MetricsReport } from "../../types/index.js";
 import { stripAnsi } from "../../utils/ansi-strip.js";
 import { log, logAbort, logExplore, logSave, logSection } from "../../utils/logger.js";
+import { parseMetricsFromExecutions, parseReportFile } from "../../utils/report-parser.js";
 
 function prompt(question: string): Promise<string> {
   return new Promise((resolve) => {
@@ -184,6 +187,38 @@ export async function runExplore(params: {
 
         const meta = await saveScript({ name, description, yamlContent });
         logSave(name, meta.yamlPath);
+
+        // 收集并保存 metrics（静默失败，不影响主流程）
+        try {
+          if (reportHtmlPath) {
+            // 等待 500ms 确保 .execution.json 写入完成
+            await new Promise((r) => setTimeout(r, 500));
+
+            const executions = parseReportFile(reportHtmlPath);
+            if (executions.length > 0) {
+              const metricsData = parseMetricsFromExecutions({
+                executions,
+                sdkVersion: "1.7.5",
+                startUrl: session?.log.startUrl,
+              });
+
+              const metricsReport: MetricsReport = {
+                version: 1,
+                scriptName: name,
+                generatedAt: new Date().toISOString(),
+                mode: "explore",
+                ...metricsData,
+              };
+
+              const metricsPath = await saveMetrics(metricsReport);
+              printMetricsSummary(metricsReport);
+              log("info", `指标报告: ${metricsPath}`);
+            }
+          }
+        } catch {
+          // metrics 收集失败静默跳过
+        }
+
         saved = true;
         break;
       }

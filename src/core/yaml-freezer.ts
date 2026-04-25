@@ -41,6 +41,18 @@ function normalizeActionType(type: string): string {
 }
 
 /**
+ * 从 Midscene Plan task 的原始响应 XML 中提取 <log>...</log> 标签内容
+ * rawResponse 格式如: <!-- Step 1: Observe -->\n<thought>...</thought>\n<log>在密码输入框中输入 admin123</log>
+ */
+function extractLogFromRawResponse(rawResponse: string): string {
+  const match = rawResponse.match(/<log>([\s\S]*?)<\/log>/);
+  if (match) {
+    return match[1]!.trim();
+  }
+  return "";
+}
+
+/**
  * 将探索会话凝固为 Midscene YAML 脚本
  *
  * @param params.name - 脚本名称
@@ -101,37 +113,86 @@ export async function freezeToYaml(params: {
   if (reportHtmlPath) {
     const executions = parseReportFile(reportHtmlPath);
 
+    // 1. 扁平化所有 Plan task 的 yamlFlow 为一个完整序列，同时记录来自哪个 exec
+    // 以及 Plan task 的 log（自然语言动作描述，用于 aiInput 无 locate 时的 fallback）
+    const flatFlow: Array<{ item: YamlFlowItem; execIndex: number }> = [];
     for (const exec of executions) {
       if (exec.status !== "finished") continue;
-
-      // 跳过 Locate 任务（无 yamlFlow，无 actions，只有 param.prompt）
-      if (exec.subType === "Locate") {
-        continue;
+      if (exec.subType !== "Plan") continue;
+      if (exec.yamlFlow?.length) {
+        const execIndex = executions.indexOf(exec);
+        for (const item of exec.yamlFlow) {
+          flatFlow.push({ item, execIndex });
+        }
       }
+    }
 
-      // ✅ ActionSpace 任务不单独处理（Plan 任务的 yamlFlow 已包含完整动作信息）
-
-      // ✅ Plan 任务：提取 yamlFlow 条目（记录 locate 信息）
-      if (exec.subType === "Plan") {
-        if (exec.yamlFlow?.length) {
-          for (const item of exec.yamlFlow) {
-            const serialized = serializeYamlFlowItem(item);
-            if (serialized) {
-              // 跳过空条目（空 ai: "" 等）
-              flow.push(serialized);
-            }
+    // 2. locate 推断：aiInput 无 locate 时，只看紧邻前序 Tap
+    // - 前序是 aiTap（有 locate）：继承 locate
+    // - 前序是 aiInput（无 locate）：Midscene 依赖 ActionSpace 上下文，跳过不推断
+    for (let i = 0; i < flatFlow.length; i++) {
+      const { item } = flatFlow[i]!;
+      const actionKey = Object.keys(item).find(
+        (k) => k !== "locate" && k !== "value" && k !== "timeout",
+      );
+      if (actionKey === "aiInput" && !item.locate && item.value) {
+        const prev = flatFlow[i - 1];
+        if (prev) {
+          const prevKey = Object.keys(prev.item).find(
+            (k) => k !== "locate" && k !== "value" && k !== "timeout",
+          );
+          if (prevKey === "aiTap" && prev.item.locate) {
+            item.locate = prev.item.locate;
           }
         }
-        // 最后一个 Plan：shouldContinuePlanning=false 时，outputOutput 是断言结果
-        if (exec.shouldContinuePlanning === false && exec.outputOutput?.trim()) {
-          flow.push({ aiAssert: exec.outputOutput.trim() });
+      }
+    }
+
+    // 3. 收集断言条目（最后一个 Plan 的 outputOutput）
+    const assertItems: Record<string, unknown>[] = [];
+    for (const exec of executions) {
+      if (exec.status !== "finished") continue;
+      if (
+        exec.subType === "Plan" &&
+        exec.shouldContinuePlanning === false &&
+        exec.outputOutput?.trim()
+      ) {
+        assertItems.push({ aiAssert: exec.outputOutput.trim() });
+      }
+    }
+
+    // 4. 序列化推断后的 flatFlow 条目
+    // - aiInput 有 locate：正常凝固
+    // - aiInput 无 locate（推断后仍无）：降级为 ai: exec.log（自然语言描述）
+    for (const { item, execIndex } of flatFlow) {
+      const actionKey = Object.keys(item).find(
+        (k) => k !== "locate" && k !== "value" && k !== "timeout",
+      );
+      const isAiInputWithoutLocate = actionKey === "aiInput" && !item.locate && item.value;
+      if (isAiInputWithoutLocate) {
+        const exec = executions[execIndex]!;
+        const rawLog = exec._rawTask?.log?.rawResponse ?? "";
+        const extractedLog = extractLogFromRawResponse(rawLog);
+        if (extractedLog) {
+          flow.push({ ai: extractedLog });
+        } else {
+          flow.push({ ai: item.value as string });
         }
         continue;
       }
+      const serialized = serializeYamlFlowItem(item);
+      if (serialized) {
+        flow.push(serialized);
+      }
+    }
 
-      // ActionSpace 任务不单独处理（Plan 任务的 yamlFlow 已包含完整动作信息）
+    // 5. 追加断言
+    flow.push(...assertItems);
 
-      // 降级兜底（只有非 Plan/Locate 的其他 subType）
+    // 6. 降级兜底（非 Plan/Locate 的其他 subType）
+    for (const exec of executions) {
+      if (exec.status !== "finished") continue;
+      if (exec.subType === "Locate" || exec.subType === "Plan") continue;
       if (exec.userInstruction) {
         flow.push({ ai: exec.userInstruction });
       }

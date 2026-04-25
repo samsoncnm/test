@@ -41,9 +41,14 @@ program
   .command("run")
   .description("运行已保存的脚本")
   .argument("<script-name>", "脚本名称")
-  .action(async (scriptName) => {
+  .option("--headful", "使用有头模式（显示浏览器窗口）")
+  .option("--keep-window", "执行完成后保持浏览器窗口不关闭")
+  .action(async (scriptName, options) => {
     try {
-      await runScript(scriptName);
+      await runScript(scriptName, {
+        headful: options.headful,
+        keepWindow: options.keepWindow,
+      });
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
