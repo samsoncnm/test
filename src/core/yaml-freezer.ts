@@ -9,7 +9,7 @@
  */
 
 import { stringify } from "yaml";
-import type { ExplorationLog, YamlScript } from "../types/index.js";
+import type { ExplorationLog, YamlFlowItem, YamlScript } from "../types/index.js";
 import { parseReportFile } from "../utils/report-parser.js";
 
 /**
@@ -54,8 +54,40 @@ export async function freezeToYaml(params: {
   explorationLog: ExplorationLog;
   reportHtmlPath?: string;
 }): Promise<string> {
+  /**
+   * 将 locate 字段规范化为字符串
+   * param.locate 可能是 {description: "..."} 对象，也可能是字符串
+   */
+  function normalizeLocate(locate: unknown): string | undefined {
+    if (!locate) return undefined;
+    if (typeof locate === "string") return locate;
+    if (typeof locate === "object") {
+      const obj = locate as Record<string, unknown>;
+      if (typeof obj.description === "string") return obj.description;
+    }
+    return undefined;
+  }
+
+  /**
+   * 将单个 yamlFlow 条目序列化（处理 locate 对象 → 字符串）
+   */
+  function serializeYamlFlowItem(item: YamlFlowItem): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(item)) {
+      if (key === "locate") {
+        result[key] = normalizeLocate(val) ?? "";
+      } else {
+        result[key] = val;
+      }
+    }
+    return result;
+  }
+
   const { explorationLog, reportHtmlPath } = params;
   const flow: Record<string, unknown>[] = [];
+
+  // 维护最近一个 yamlFlow 条目（来自 Plan 任务），供后续 ActionSpace 任务合并 value
+  let lastYamlFlowItem: YamlFlowItem | null = null;
 
   // 优先从报告 JSON 解析 yamlFlow
   if (reportHtmlPath) {
@@ -64,63 +96,70 @@ export async function freezeToYaml(params: {
     for (const exec of executions) {
       if (exec.status !== "finished") continue;
 
-      // 跳过 Locate 任务（只有 param.prompt，无 userInstruction）
-      if (!exec.userInstruction) {
+      // 跳过 Locate 任务（无 yamlFlow，无 actions，只有 param.prompt）
+      if (exec.subType === "Locate") {
         continue;
       }
 
-      // 策略 1：Plan 任务有 yamlFlow → 放入动作 + 末尾追加断言
-      if (exec.subType === "Plan" && exec.yamlFlow?.length) {
-        for (const item of exec.yamlFlow) {
-          flow.push(item as Record<string, unknown>);
+      // ✅ Plan 任务：提取 yamlFlow 条目（记录 locate 信息）
+      if (exec.subType === "Plan") {
+        if (exec.yamlFlow?.length) {
+          for (const item of exec.yamlFlow) {
+            const serialized = serializeYamlFlowItem(item);
+            flow.push(serialized);
+            lastYamlFlowItem = item;
+          }
         }
-        // 最后一个 Plan 任务的 outputOutput 才是断言
+        // 最后一个 Plan：shouldContinuePlanning=false 时，outputOutput 是断言结果
         if (exec.shouldContinuePlanning === false && exec.outputOutput?.trim()) {
           flow.push({ aiAssert: exec.outputOutput.trim() });
         }
         continue;
       }
 
-      // 策略 2：yamlFlow 为空但 outputOutput 有值 → 纯断言（Plan 任务）
-      if (exec.subType === "Plan" && !exec.yamlFlow?.length && exec.outputOutput?.trim()) {
-        flow.push({ aiAssert: exec.outputOutput.trim() });
-        continue;
-      }
-
-      // ✅ ActionSpace 任务（Input / Tap / DoubleClick 等）：从 actions[] 提取
-      // yamlFlow 格式：{ aiTap: "", locate: "..." } 或 { aiInput: "", value: "...", locate: "..." }
+      // ✅ ActionSpace 任务（Input / Tap / DoubleClick 等）：补充 value 到上一个 yamlFlow 条目
       if (exec.actions && exec.actions.length > 0) {
         for (const action of exec.actions) {
           const normalizedType = normalizeActionType(action.type);
-          // aiInput / aiTap / aiDoubleClick 等的 action type 小写不含 "ai" 前缀
-          const actionSuffix = normalizedType.replace(/^ai/, "").toLowerCase();
           const param = action.param ?? {};
 
+          // 有 value → 尝试合并到上一个 yamlFlow 条目（如 aiInput 补充 value）
           if (param.value !== undefined) {
-            // 有 value → aiInput 类型（带输入值）
-            const item: Record<string, unknown> = { [normalizedType]: "", value: param.value };
-            if (param.locate) item.locate = param.locate;
-            flow.push(item);
-          } else {
-            // 无 value → aiTap / aiDoubleClick 等
-            // 从 yamlFlow 中找 locate 描述（yamlFlow 只存在于 Plan 任务中，与 ActionSpace 并行）
-            const locateValue = (() => {
-              if (exec.yamlFlow && exec.yamlFlow.length > 0) {
-                const found = exec.yamlFlow.find((f) => {
-                  const key = Object.keys(f)[0] ?? "";
-                  return key.replace(/^ai/, "").toLowerCase() === actionSuffix;
-                });
-                if (found && "locate" in found) return found.locate;
+            if (lastYamlFlowItem) {
+              // 合并：保留 yamlFlow 的 locate，补充 value
+              const merged: Record<string, unknown> = {};
+              for (const [k, v] of Object.entries(lastYamlFlowItem)) {
+                merged[k] = v;
               }
-              return param.locate ?? exec.userInstruction;
-            })();
+              merged.value = param.value;
+              // locate 对象 → 字符串
+              if ("locate" in merged) {
+                merged.locate = normalizeLocate(merged.locate) ?? "";
+              }
+              // 覆盖 flow 最后一项
+              flow[flow.length - 1] = merged;
+            } else {
+              // 没有上一个 yamlFlow，直接用 actions 数据构造
+              const item: Record<string, unknown> = { [normalizedType]: "" };
+              if (param.value !== undefined) item.value = param.value;
+              if (param.locate) item.locate = normalizeLocate(param.locate) ?? "";
+              flow.push(item);
+            }
+          } else {
+            // 无 value（如 aiTap）：直接使用 yamlFlow 的 locate（ActionSpace param.locate 是对象）
+            const locateValue =
+              normalizeLocate(param.locate) ??
+              (lastYamlFlowItem && "locate" in lastYamlFlowItem
+                ? normalizeLocate(lastYamlFlowItem.locate)
+                : undefined) ??
+              exec.userInstruction;
             flow.push({ [normalizedType]: "", locate: locateValue });
           }
         }
         continue;
       }
 
-      // 策略 4：降级为 ai 字符串（无法解析时兜底）
+      // 降级兜底
       if (exec.userInstruction) {
         flow.push({ ai: exec.userInstruction });
       }
