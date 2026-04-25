@@ -67,6 +67,13 @@ export function printMetricsSummary(report: MetricsReport): void {
   console.log(`  AI 推理耗时 ${pc.dim(":")} ${aiTimeS}s`);
   console.log(`  总 Token    ${pc.dim(":")} ${summary.totalTokens.toLocaleString()}`);
   console.log(`  缓存节省    ${pc.dim(":")} ${summary.totalCachedTokens.toLocaleString()}`);
+  if (summary.totalCachedTokens > 0) {
+    const savings =
+      summary.totalTokens > 0
+        ? ((summary.totalCachedTokens / summary.totalTokens) * 100).toFixed(1)
+        : "0";
+    console.log(pc.green(`  ${pc.dim("→")} 缓存命中！节省 ${savings}% Token，减少 AI 推理耗时`));
+  }
   console.log();
 
   if (summary.modelBreakdown.length > 0) {

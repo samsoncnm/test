@@ -384,8 +384,8 @@ export function parseMetricsFromExecutions(params: {
     passInfo: {
       detected: passInfo.passCount > 1,
       passCount: passInfo.passCount,
-      passIds: (passInfo.passIds || []).filter(
-        (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+      passIds: (passInfo.passIds || []).filter((id: string) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id),
       ),
     },
   };

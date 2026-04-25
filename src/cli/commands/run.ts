@@ -19,7 +19,7 @@ import {
 
 export async function runScript(
   scriptName: string,
-  options?: { headful?: boolean; keepWindow?: boolean },
+  options?: { headful?: boolean; keepWindow?: boolean; noCache?: boolean },
 ): Promise<void> {
   const yamlPath = await getScriptPath(scriptName);
 
@@ -58,7 +58,7 @@ export async function runScript(
   // 创建锁文件
   writeFileSync(lockPath, `${process.pid}`, "utf-8");
 
-  const needsInject = options?.headful || options?.keepWindow;
+  const needsInject = options?.headful || options?.keepWindow || options?.noCache;
   const originalContent = needsInject ? readFileSync(absoluteYamlPath, "utf8") : null;
 
   try {
@@ -68,6 +68,7 @@ export async function runScript(
       const agent = doc.agent as Record<string, unknown>;
       if (options.headful) agent.headed = true;
       if (options.keepWindow) agent.keepWindow = true;
+      if (options.noCache) agent.cache = false;
       writeFileSync(absoluteYamlPath, stringify(doc));
     }
 

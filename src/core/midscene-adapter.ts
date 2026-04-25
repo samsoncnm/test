@@ -76,6 +76,7 @@ export async function createExplorationSession(
     generateReport: true,
     autoPrintReportMsg: false,
     persistExecutionDump: true,
+    cache: { id: "nl-script-explore", strategy: "read-write" },
   });
 
   log("success", "Midscene Agent 初始化完成");
@@ -138,6 +139,12 @@ export async function executeAndLog(session: ExplorationSession, action: string)
 }
 
 export async function closeSession(session: ExplorationSession): Promise<void> {
+  // 尝试 flush 缓存（最佳实践：会话结束前持久化缓存）
+  try {
+    await session.agent.flushCache?.({ cleanUnused: true });
+  } catch {
+    // flushCache 失败静默跳过，不影响清理流程
+  }
   try {
     await session.agent.destroy();
   } catch {

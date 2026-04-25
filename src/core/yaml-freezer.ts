@@ -214,9 +214,14 @@ export async function freezeToYaml(params: {
     }
   }
 
+  const hasDeepLocate = explorationLog.steps.some((s) => s.deepLocate === true);
   const yamlScript: YamlScript = {
     web: {
       url: explorationLog.startUrl,
+    },
+    agent: {
+      cache: { id: params.name, strategy: "read-write" },
+      ...(hasDeepLocate ? { deepLocate: true } : {}),
     },
     tasks: [
       {
@@ -225,14 +230,6 @@ export async function freezeToYaml(params: {
       },
     ],
   };
-
-  // 检查是否有任意一步启用了 deepLocate
-  const hasDeepLocate = explorationLog.steps.some((s) => s.deepLocate === true);
-  if (hasDeepLocate) {
-    yamlScript.agent = {
-      deepLocate: true,
-    };
-  }
 
   return stringify(yamlScript, { indent: 2, lineWidth: 0 });
 }

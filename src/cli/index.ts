@@ -43,11 +43,13 @@ program
   .argument("<script-name>", "脚本名称")
   .option("--headful", "使用有头模式（显示浏览器窗口）")
   .option("--keep-window", "执行完成后保持浏览器窗口不关闭")
+  .option("--no-cache", "禁用缓存，强制重新执行所有 AI 调用")
   .action(async (scriptName, options) => {
     try {
       await runScript(scriptName, {
         headful: options.headful,
         keepWindow: options.keepWindow,
+        noCache: options.noCache,
       });
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
