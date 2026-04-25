@@ -198,6 +198,7 @@ export async function runExplore(params: {
             if (executions.length > 0) {
               const metricsData = parseMetricsFromExecutions({
                 executions,
+                htmlPath: reportHtmlPath,
                 sdkVersion: "1.7.5",
                 startUrl: session?.log.startUrl,
               });

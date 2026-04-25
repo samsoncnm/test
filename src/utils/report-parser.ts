@@ -36,6 +36,7 @@ export function parseReportFile(htmlPath: string): ParsedExecution[] {
 
     for (const exec of executionList) {
       const taskList = exec.tasks ?? [];
+      const execId = exec.id ?? "";
 
       for (const task of taskList) {
         const output = task.output ?? {};
@@ -47,6 +48,7 @@ export function parseReportFile(htmlPath: string): ParsedExecution[] {
         const actions = output.actions as ParsedExecution["actions"];
 
         executions.push({
+          executionId: execId,
           taskName: exec.name ?? "",
           subType: task.subType ?? "",
           userInstruction: param.userInstruction ?? "",
@@ -103,15 +105,69 @@ function mapUsage(raw?: Record<string, unknown>): TaskUsage | undefined {
 }
 
 /**
+ * 累加所有有 usage 的 task 的 token 数据
+ */
+function aggregateUsage(tasks: NonNullable<ParsedExecution["_rawTask"]>[]): TaskUsage | undefined {
+  let totalPrompt = 0;
+  let totalCompletion = 0;
+  let totalTokens = 0;
+  let totalCached = 0;
+  let totalTimeCost = 0;
+  let modelName = "";
+  let intent = "";
+
+  for (const t of tasks) {
+    if (t.usage) {
+      totalPrompt += (t.usage.prompt_tokens as number) ?? 0;
+      totalCompletion += (t.usage.completion_tokens as number) ?? 0;
+      totalTokens += (t.usage.total_tokens as number) ?? 0;
+      totalCached += (t.usage.cached_input as number) ?? 0;
+      totalTimeCost += (t.usage.time_cost as number) ?? 0;
+      if (!modelName && (t.usage.model_name as string)) {
+        modelName = t.usage.model_name as string;
+        intent = t.usage.intent as string;
+      }
+    }
+  }
+
+  if (totalTokens === 0) return undefined;
+  return {
+    promptTokens: totalPrompt,
+    completionTokens: totalCompletion,
+    totalTokens,
+    cachedTokens: totalCached,
+    timeCostMs: totalTimeCost,
+    modelName,
+    intent,
+  };
+}
+
+/**
+ * 从 HTML 中检测有多少个不同的 data-group-id（即 SDK 执行了多少遍）
+ */
+export function detectPassInfo(htmlPath: string): { passIds: string[]; passCount: number } {
+  try {
+    const html = fs.readFileSync(htmlPath, "utf-8");
+    const matches = [...html.matchAll(/data-group-id="([^"]+)"/g)];
+    const passIds = [...new Set(matches.map((m) => m[1]!).filter(Boolean))];
+    return { passIds, passCount: passIds.length };
+  } catch {
+    return { passIds: [], passCount: 0 };
+  }
+}
+
+/**
  * 从 .execution.json 数据中提取 metrics
- * 分组逻辑：Plan 任务携带 userInstruction，同一个 aiAct 调用的所有子 task 共享同一 instruction
+ * 分组逻辑：按 execution.id 分组（每个 execution.id = 一个完整的 aiAct 调用）
+ * 对 double-pass 完全免疫（SDK 执行 N 遍，分 N 个 execution.id 组）
  */
 export function parseMetricsFromExecutions(params: {
   executions: ParsedExecution[];
   sdkVersion?: string;
   startUrl?: string;
-}): Pick<MetricsReport, "environment" | "summary" | "steps"> {
-  // 按 userInstruction 分组，同一 aiAct 的子 task 共享同一 instruction
+  htmlPath?: string;
+}): Pick<MetricsReport, "environment" | "summary" | "steps" | "passInfo"> {
+  // 按 execution.id 分组
   const stepMap = new Map<
     string,
     {
@@ -124,11 +180,13 @@ export function parseMetricsFromExecutions(params: {
     const rawTask = exec._rawTask;
     if (!rawTask) continue;
 
-    const userInstruction = (rawTask.param?.userInstruction as string) ?? exec.userInstruction;
-    const groupKey = userInstruction;
+    const groupKey = exec.executionId || `no-id-${stepMap.size}`;
 
     if (!stepMap.has(groupKey)) {
-      stepMap.set(groupKey, { userInstruction, tasks: [] });
+      stepMap.set(groupKey, {
+        userInstruction: (rawTask.param?.userInstruction as string) ?? exec.userInstruction ?? "",
+        tasks: [],
+      });
     }
     stepMap.get(groupKey)!.tasks.push(rawTask);
   }
@@ -145,20 +203,20 @@ export function parseMetricsFromExecutions(params: {
     const lastEnd = tasks.reduce((max, t) => Math.max(max, t.timing?.end ?? 0), 0);
     const wallTimeMs = Math.max(0, lastEnd - firstStart);
 
-    // aiTimeMs = 累加所有 Plan/Locate 任务的 timing.cost
+    // aiTimeMs = 累加所有 Plan / Locate / Assert 任务的 timing.cost
     const aiTimeMs = tasks.reduce((sum, t) => {
       const subType = t.subType ?? "";
-      if (subType === "Plan" || subType === "Locate") {
+      if (subType === "Plan" || subType === "Locate" || subType === "Assert") {
         return sum + ((t.timing?.cost as number) ?? 0);
       }
       return sum;
     }, 0);
 
-    // status = 第一个 task 的 status（Plan 任务决定整体状态）
+    // status = 第一个 task 的 status
     const status = (task0.status === "finished" ? "finished" : "failed") as "finished" | "failed";
 
-    // 主模型 usage = 第一个 task（Plan 任务）的 usage
-    const usage = mapUsage(task0.usage);
+    // usage = 累加所有 task 的 usage
+    const usage = aggregateUsage(tasks);
 
     // locateUsage = 累加所有 Locate 任务的 searchAreaUsage
     let locateUsage: TaskUsage | undefined;
@@ -183,7 +241,6 @@ export function parseMetricsFromExecutions(params: {
     const actionSet = new Set<string>();
     const actions: StepMetrics["actions"] = [];
 
-    // 扁平化所有 task 的 yamlFlow
     const flatFlow: RawYamlFlowItem[] = [];
     for (const t of tasks) {
       const yf = t.output?.yamlFlow as RawYamlFlowItem[] | undefined;
@@ -209,8 +266,6 @@ export function parseMetricsFromExecutions(params: {
       }
     }
 
-    // 从推断后的 flatFlow 提取 actions
-    // aiInput 无 locate（且推断后仍无）：description 取 value 而非空
     for (const item of flatFlow) {
       const actionType = Object.keys(item).find(
         (k) => k !== "locate" && k !== "value" && k !== "timeout",
@@ -231,14 +286,12 @@ export function parseMetricsFromExecutions(params: {
     const screenshotSet = new Set<string>();
     const screenshots: string[] = [];
     for (const t of tasks) {
-      // uiContext.screenshot.path
       const ss = t.uiContext?.screenshot as Record<string, unknown> | undefined;
       const screenshotPath = (ss?.path as string) ?? "";
       if (screenshotPath && !screenshotSet.has(screenshotPath)) {
         screenshotSet.add(screenshotPath);
         screenshots.push(screenshotPath);
       }
-      // recorder[].screenshot.path
       const recorder = t.recorder;
       if (recorder) {
         for (const entry of recorder) {
@@ -300,7 +353,6 @@ export function parseMetricsFromExecutions(params: {
     };
   });
 
-  // 统计每个模型的 step 数量
   for (const step of steps) {
     if (step.usage) {
       const entry = modelBreakdown.find(
@@ -309,6 +361,11 @@ export function parseMetricsFromExecutions(params: {
       if (entry) entry.steps++;
     }
   }
+
+  // 检测 double-pass
+  const passInfo = params.htmlPath
+    ? detectPassInfo(params.htmlPath)
+    : { passIds: [], passCount: 0 };
 
   return {
     environment: {
@@ -324,6 +381,13 @@ export function parseMetricsFromExecutions(params: {
       modelBreakdown,
     },
     steps,
+    passInfo: {
+      detected: passInfo.passCount > 1,
+      passCount: passInfo.passCount,
+      passIds: (passInfo.passIds || []).filter(
+        (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+      ),
+    },
   };
 }
 

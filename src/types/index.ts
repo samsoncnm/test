@@ -18,7 +18,7 @@ export interface TaskUsage {
 }
 
 /**
- * 单个 step 的 metrics（对应一个 aiAct 调用，即一组相同 userInstruction 的 task）
+ * 单个 step 的 metrics（对应一个 execution，即一个完整的 aiAct 调用）
  */
 export interface StepMetrics {
   userInstruction: string;
@@ -26,7 +26,7 @@ export interface StepMetrics {
   status: "finished" | "failed";
   /** 墙钟耗时 = timing.end - timing.start（包含截图+推理+执行） */
   wallTimeMs: number;
-  /** AI 推理耗时 = Σ timing.cost（仅 Plan/Locate 任务累加） */
+  /** AI 推理耗时 = Σ timing.cost（Plan / Locate / Assert 任务累加） */
   aiTimeMs: number;
   /** 这个 step 包含多少个子 task */
   subTasks: number;
@@ -51,6 +51,13 @@ export interface MetricsReport {
   scriptName: string;
   generatedAt: string;
   mode: "explore" | "run";
+  /** 标识 SDK 是否发生了 double-pass（同一 YAML 执行了多遍） */
+  passInfo?: {
+    detected: boolean;
+    passCount: number;
+    /** 各 pass 的 group-id（HTML 中的 data-group-id） */
+    passIds: string[];
+  };
   environment: {
     sdkVersion: string;
     startUrl?: string;
@@ -117,6 +124,8 @@ export interface YamlFlowItem {
  * 结构匹配 executions[].tasks[] 字段
  */
 export interface ParsedExecution {
+  /** 执行 ID（UUID），用于分组 */
+  executionId: string;
   /** 执行名称，如 "Act - 在页面上随便说点什么" */
   taskName: string;
   /** 子类型：Plan / Input / Locate */

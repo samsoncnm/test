@@ -4,7 +4,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parse, stringify } from "yaml";
 import { printMetricsSummary, saveMetrics } from "../../storage/metrics-store.js";
@@ -33,23 +33,59 @@ export async function runScript(
   const absoluteYamlPath = resolve(yamlPath);
   const projectRoot = process.cwd();
 
+  // 幂等锁：防止外部触发源（npm 重试 / CI 重试 / debugger re-run）导致重复调用
+  const lockPath = join(projectRoot, "midscene_run", ".running");
+
+  if (existsSync(lockPath)) {
+    const lockPid = readFileSync(lockPath, "utf-8").trim().split("\n")[0] ?? "";
+    try {
+      process.kill(Number(lockPid), 0);
+      throw new Error("already_running");
+    } catch (e: unknown) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (code === "ESRCH") {
+        // ESRCH = 进程不存在，锁文件已过期，直接删除
+        unlinkSync(lockPath);
+      } else {
+        // 进程存在（EPERM）或未知错误，视为冲突
+        throw new Error(
+          `检测到已有运行中的脚本 (PID ${lockPid})，请先终止后再试。提示：在任务管理器中结束进程 ${lockPid}，或删除 midscene_run/.running 文件`,
+        );
+      }
+    }
+  }
+
+  // 创建锁文件
+  writeFileSync(lockPath, `${process.pid}`, "utf-8");
+
   const needsInject = options?.headful || options?.keepWindow;
   const originalContent = needsInject ? readFileSync(absoluteYamlPath, "utf8") : null;
 
-  if (needsInject && originalContent !== null) {
-    const doc = parse(originalContent) as Record<string, unknown>;
-    if (!doc.agent) doc.agent = {};
-    const agent = doc.agent as Record<string, unknown>;
-    if (options.headful) agent.headed = true;
-    if (options.keepWindow) agent.keepWindow = true;
-    writeFileSync(absoluteYamlPath, stringify(doc));
-  }
-
   try {
-    await runMidscene(projectRoot, absoluteYamlPath, scriptName);
-  } finally {
     if (needsInject && originalContent !== null) {
-      writeFileSync(absoluteYamlPath, originalContent);
+      const doc = parse(originalContent) as Record<string, unknown>;
+      if (!doc.agent) doc.agent = {};
+      const agent = doc.agent as Record<string, unknown>;
+      if (options.headful) agent.headed = true;
+      if (options.keepWindow) agent.keepWindow = true;
+      writeFileSync(absoluteYamlPath, stringify(doc));
+    }
+
+    try {
+      await runMidscene(projectRoot, absoluteYamlPath, scriptName);
+    } finally {
+      if (needsInject && originalContent !== null) {
+        writeFileSync(absoluteYamlPath, originalContent);
+      }
+    }
+  } finally {
+    // 无论成功还是失败，都要释放锁
+    if (existsSync(lockPath)) {
+      try {
+        unlinkSync(lockPath);
+      } catch {
+        // 忽略删除锁文件时的错误
+      }
     }
   }
 }
@@ -108,7 +144,10 @@ async function runMidscene(
 
             const executions = parseReportFile(htmlPath);
             if (executions.length > 0) {
-              const metricsData = parseMetricsFromExecutions({ executions });
+              const metricsData = parseMetricsFromExecutions({
+                executions,
+                htmlPath,
+              });
 
               const metricsReport: MetricsReport = {
                 version: 1,

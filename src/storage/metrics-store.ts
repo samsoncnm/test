@@ -50,6 +50,16 @@ export function printMetricsSummary(report: MetricsReport): void {
   console.log();
   console.log(pc.bold(pc.underline("📊 执行指标")));
   console.log();
+
+  if (report.passInfo?.detected) {
+    console.log(
+      pc.yellow(
+        `  ⚠ SDK 检测到 double-pass（执行了 ${report.passInfo.passCount} 遍），指标为所有 pass 合计`,
+      ),
+    );
+    console.log();
+  }
+
   console.log(`  脚本名称    ${pc.dim(":")} ${report.scriptName}`);
   console.log(`  执行模式    ${pc.dim(":")} ${report.mode}`);
   console.log(`  步骤数      ${pc.dim(":")} ${summary.totalSteps}`);
