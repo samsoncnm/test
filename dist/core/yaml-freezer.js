@@ -72,12 +72,37 @@ export async function freezeToYaml(params) {
                 flow.push({ aiAssert: exec.outputOutput.trim() });
                 continue;
             }
-            // 策略 3：从 actions 列表映射为原生动作类型
+            // ✅ ActionSpace 任务（Input / Tap / DoubleClick 等）：从 actions[] 提取
+            // yamlFlow 格式：{ aiTap: "", locate: "..." } 或 { aiInput: "", value: "...", locate: "..." }
             if (exec.actions && exec.actions.length > 0) {
                 for (const action of exec.actions) {
                     const normalizedType = normalizeActionType(action.type);
+                    // aiInput / aiTap / aiDoubleClick 等的 action type 小写不含 "ai" 前缀
+                    const actionSuffix = normalizedType.replace(/^ai/, "").toLowerCase();
                     const param = action.param ?? {};
-                    flow.push({ [normalizedType]: param.value ?? exec.userInstruction, ...param });
+                    if (param.value !== undefined) {
+                        // 有 value → aiInput 类型（带输入值）
+                        const item = { [normalizedType]: "", value: param.value };
+                        if (param.locate)
+                            item.locate = param.locate;
+                        flow.push(item);
+                    }
+                    else {
+                        // 无 value → aiTap / aiDoubleClick 等
+                        // 从 yamlFlow 中找 locate 描述（yamlFlow 只存在于 Plan 任务中，与 ActionSpace 并行）
+                        const locateValue = (() => {
+                            if (exec.yamlFlow && exec.yamlFlow.length > 0) {
+                                const found = exec.yamlFlow.find((f) => {
+                                    const key = Object.keys(f)[0] ?? "";
+                                    return key.replace(/^ai/, "").toLowerCase() === actionSuffix;
+                                });
+                                if (found && "locate" in found)
+                                    return found.locate;
+                            }
+                            return param.locate ?? exec.userInstruction;
+                        })();
+                        flow.push({ [normalizedType]: "", locate: locateValue });
+                    }
                 }
                 continue;
             }

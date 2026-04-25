@@ -49,6 +49,7 @@ export async function createExplorationSession(initialUrl, maxSteps = 20, headle
         reportFileName,
         generateReport: true,
         autoPrintReportMsg: false,
+        persistExecutionDump: true,
     });
     log("success", "Midscene Agent 初始化完成");
     return {
