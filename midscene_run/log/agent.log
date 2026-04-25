@@ -24,3 +24,202 @@
 [2026-04-24T22:39:44.255+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
 [2026-04-24T22:40:49.550+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
 [2026-04-24T23:07:13.943+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
+[2026-04-25T01:15:29.967+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
+[2026-04-25T01:16:29.137+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
+[2026-04-25T01:17:10.918+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
+[2026-04-25T01:17:50.058+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
+[2026-04-25T01:19:26.877+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
+[2026-04-25T11:29:29.698+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
+[2026-04-25T13:01:00.576+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
+[2026-04-25T13:17:30.610+08:00] callActionInActionSpace Input , {
+  locate: {
+    prompt: '账号输入框',
+    deepLocate: false,
+    cacheable: true,
+    xpath: undefined
+  },
+  value: 'testrole'
+}
+[2026-04-25T13:17:30.611+08:00] actionPlan {
+  type: 'Input',
+  param: {
+    locate: {
+      prompt: '账号输入框',
+      deepLocate: false,
+      cacheable: true,
+      xpath: undefined
+    },
+    value: 'testrole'
+  },
+  thought: ''
+}
+[2026-04-25T13:17:36.101+08:00] callActionInActionSpace Input , {
+  locate: {
+    prompt: '密码输入框',
+    deepLocate: false,
+    cacheable: true,
+    xpath: undefined
+  },
+  value: 'admin123'
+}
+[2026-04-25T13:17:36.101+08:00] actionPlan {
+  type: 'Input',
+  param: {
+    locate: {
+      prompt: '密码输入框',
+      deepLocate: false,
+      cacheable: true,
+      xpath: undefined
+    },
+    value: 'admin123'
+  },
+  thought: ''
+}
+[2026-04-25T13:17:40.420+08:00] callActionInActionSpace Tap , {
+  locate: {
+    prompt: '已阅读复选框',
+    deepLocate: false,
+    cacheable: true,
+    xpath: undefined
+  }
+}
+[2026-04-25T13:17:40.420+08:00] actionPlan {
+  type: 'Tap',
+  param: {
+    locate: {
+      prompt: '已阅读复选框',
+      deepLocate: false,
+      cacheable: true,
+      xpath: undefined
+    }
+  },
+  thought: ''
+}
+[2026-04-25T13:17:44.274+08:00] callActionInActionSpace Tap , {
+  locate: {
+    prompt: '登录按钮',
+    deepLocate: false,
+    cacheable: true,
+    xpath: undefined
+  }
+}
+[2026-04-25T13:17:44.274+08:00] actionPlan {
+  type: 'Tap',
+  param: {
+    locate: {
+      prompt: '登录按钮',
+      deepLocate: false,
+      cacheable: true,
+      xpath: undefined
+    }
+  },
+  thought: ''
+}
+[2026-04-25T13:21:06.992+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
+[2026-04-25T16:00:35.181+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
+[2026-04-25T16:01:46.013+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
+[2026-04-25T16:19:02.059+08:00] setting includeBboxInPlanning to false { deepThink: undefined, noIndividualLocateModel: false }
+[2026-04-25T16:23:41.620+08:00] callActionInActionSpace Tap , {
+  locate: {
+    prompt: '账号输入框',
+    deepLocate: false,
+    cacheable: true,
+    xpath: undefined
+  }
+}
+[2026-04-25T16:23:41.620+08:00] actionPlan {
+  type: 'Tap',
+  param: {
+    locate: {
+      prompt: '账号输入框',
+      deepLocate: false,
+      cacheable: true,
+      xpath: undefined
+    }
+  },
+  thought: ''
+}
+[2026-04-25T16:23:46.610+08:00] callActionInActionSpace Input , { value: 'testrole' }
+[2026-04-25T16:23:46.610+08:00] actionPlan { type: 'Input', param: { value: 'testrole' }, thought: '' }
+[2026-04-25T16:23:48.612+08:00] callActionInActionSpace Tap , {
+  locate: {
+    prompt: '密码输入框',
+    deepLocate: false,
+    cacheable: true,
+    xpath: undefined
+  }
+}
+[2026-04-25T16:23:48.612+08:00] actionPlan {
+  type: 'Tap',
+  param: {
+    locate: {
+      prompt: '密码输入框',
+      deepLocate: false,
+      cacheable: true,
+      xpath: undefined
+    }
+  },
+  thought: ''
+}
+[2026-04-25T16:23:52.256+08:00] callActionInActionSpace Input , { value: 'admin123' }
+[2026-04-25T16:23:52.256+08:00] actionPlan { type: 'Input', param: { value: 'admin123' }, thought: '' }
+[2026-04-25T16:23:54.243+08:00] callActionInActionSpace Tap , {
+  locate: {
+    prompt: '已阅读复选框',
+    deepLocate: false,
+    cacheable: true,
+    xpath: undefined
+  }
+}
+[2026-04-25T16:23:54.243+08:00] actionPlan {
+  type: 'Tap',
+  param: {
+    locate: {
+      prompt: '已阅读复选框',
+      deepLocate: false,
+      cacheable: true,
+      xpath: undefined
+    }
+  },
+  thought: ''
+}
+[2026-04-25T16:23:57.770+08:00] callActionInActionSpace Tap , {
+  locate: {
+    prompt: '登录按钮',
+    deepLocate: false,
+    cacheable: true,
+    xpath: undefined
+  }
+}
+[2026-04-25T16:23:57.770+08:00] actionPlan {
+  type: 'Tap',
+  param: {
+    locate: {
+      prompt: '登录按钮',
+      deepLocate: false,
+      cacheable: true,
+      xpath: undefined
+    }
+  },
+  thought: ''
+}
+[2026-04-25T16:24:02.055+08:00] callActionInActionSpace Tap , {
+  locate: {
+    prompt: '左侧菜单中的"内部管理"选项',
+    deepLocate: false,
+    cacheable: true,
+    xpath: undefined
+  }
+}
+[2026-04-25T16:24:02.055+08:00] actionPlan {
+  type: 'Tap',
+  param: {
+    locate: {
+      prompt: '左侧菜单中的"内部管理"选项',
+      deepLocate: false,
+      cacheable: true,
+      xpath: undefined
+    }
+  },
+  thought: ''
+}

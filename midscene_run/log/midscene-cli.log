@@ -30,3 +30,15 @@
   _: [ 'D:\\Ai_scratch\\scripts\\templates\\httpbin-test.yaml' ],
   '$0': 'node_modules\\@midscene\\cli\\bin\\midscene'
 }
+[2026-04-25T01:19:22.125+08:00] argv {
+  _: [ 'D:\\Ai_scratch\\scripts\\templates\\evertro-login.yaml' ],
+  '$0': 'node_modules\\@midscene\\cli\\bin\\midscene'
+}
+[2026-04-25T13:17:26.536+08:00] argv {
+  _: [ 'D:\\Ai_scratch\\scripts\\templates\\登录脚本.yaml' ],
+  '$0': 'node_modules\\@midscene\\cli\\bin\\midscene'
+}
+[2026-04-25T16:23:37.204+08:00] argv {
+  _: [ 'D:\\Ai_scratch\\scripts\\templates\\登录脚本v5.yaml' ],
+  '$0': 'node_modules\\@midscene\\cli\\bin\\midscene'
+}

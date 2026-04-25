@@ -24,3 +24,81 @@
 [2026-04-24T22:40:49.743+08:00] Photon loaded: @silvia-odwyer/photon-node (node)
 [2026-04-24T23:07:14.257+08:00] Loading photon module in node environment
 [2026-04-24T23:07:14.288+08:00] Photon loaded: @silvia-odwyer/photon-node (node)
+[2026-04-25T01:15:30.145+08:00] Loading photon module in node environment
+[2026-04-25T01:15:30.167+08:00] Photon loaded: @silvia-odwyer/photon-node (node)
+[2026-04-25T01:17:50.228+08:00] Loading photon module in node environment
+[2026-04-25T01:17:50.244+08:00] Photon loaded: @silvia-odwyer/photon-node (node)
+[2026-04-25T01:19:27.817+08:00] Loading photon module in node environment
+[2026-04-25T01:19:27.833+08:00] Photon loaded: @silvia-odwyer/photon-node (node)
+[2026-04-25T11:29:29.978+08:00] Loading photon module in node environment
+[2026-04-25T11:29:30.066+08:00] Photon loaded: @silvia-odwyer/photon-node (node)
+[2026-04-25T11:29:39.826+08:00] scaleImage start, scale factor: 2
+[2026-04-25T11:29:41.437+08:00] scaleImage done (Sharp): 609x263 -> 1218x526 (scale=2), cost: 1611ms
+[2026-04-25T11:30:03.824+08:00] scaleImage start, scale factor: 2
+[2026-04-25T11:30:03.840+08:00] scaleImage done (Sharp): 610x262 -> 1220x524 (scale=2), cost: 16ms
+[2026-04-25T11:30:26.027+08:00] scaleImage start, scale factor: 2
+[2026-04-25T11:30:26.043+08:00] scaleImage done (Sharp): 401x399 -> 802x798 (scale=2), cost: 16ms
+[2026-04-25T11:30:43.643+08:00] scaleImage start, scale factor: 2
+[2026-04-25T11:30:43.659+08:00] scaleImage done (Sharp): 607x264 -> 1214x528 (scale=2), cost: 16ms
+[2026-04-25T13:01:00.741+08:00] Loading photon module in node environment
+[2026-04-25T13:01:00.763+08:00] Photon loaded: @silvia-odwyer/photon-node (node)
+[2026-04-25T13:01:08.433+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:01:08.713+08:00] scaleImage done (Sharp): 609x263 -> 1218x526 (scale=2), cost: 280ms
+[2026-04-25T13:01:22.319+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:01:22.336+08:00] scaleImage done (Sharp): 610x262 -> 1220x524 (scale=2), cost: 17ms
+[2026-04-25T13:01:34.467+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:01:34.483+08:00] scaleImage done (Sharp): 401x399 -> 802x798 (scale=2), cost: 16ms
+[2026-04-25T13:01:45.843+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:01:45.859+08:00] scaleImage done (Sharp): 607x264 -> 1214x528 (scale=2), cost: 16ms
+[2026-04-25T13:17:31.522+08:00] Loading photon module in node environment
+[2026-04-25T13:17:31.534+08:00] Photon loaded: @silvia-odwyer/photon-node (node)
+[2026-04-25T13:21:07.141+08:00] Loading photon module in node environment
+[2026-04-25T13:21:07.161+08:00] Photon loaded: @silvia-odwyer/photon-node (node)
+[2026-04-25T13:21:17.633+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:21:17.706+08:00] scaleImage done (Sharp): 609x263 -> 1218x526 (scale=2), cost: 73ms
+[2026-04-25T13:21:32.239+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:21:32.255+08:00] scaleImage done (Sharp): 610x262 -> 1220x524 (scale=2), cost: 16ms
+[2026-04-25T13:21:49.528+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:21:49.546+08:00] scaleImage done (Sharp): 401x399 -> 802x798 (scale=2), cost: 18ms
+[2026-04-25T13:22:00.348+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:22:00.370+08:00] scaleImage done (Sharp): 605x264 -> 1210x528 (scale=2), cost: 22ms
+[2026-04-25T13:22:31.231+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:22:31.251+08:00] scaleImage done (Sharp): 301x768 -> 602x1536 (scale=2), cost: 20ms
+[2026-04-25T13:22:56.018+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:22:56.073+08:00] scaleImage done (Sharp): 956x768 -> 1912x1536 (scale=2), cost: 55ms
+[2026-04-25T13:23:43.926+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:23:43.944+08:00] scaleImage done (Sharp): 548x237 -> 1096x474 (scale=2), cost: 18ms
+[2026-04-25T13:24:00.281+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:24:00.300+08:00] scaleImage done (Sharp): 301x768 -> 602x1536 (scale=2), cost: 19ms
+[2026-04-25T13:24:22.212+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:24:22.231+08:00] scaleImage done (Sharp): 301x768 -> 602x1536 (scale=2), cost: 19ms
+[2026-04-25T13:24:44.307+08:00] scaleImage start, scale factor: 2
+[2026-04-25T13:24:44.328+08:00] scaleImage done (Sharp): 1280x147 -> 2560x294 (scale=2), cost: 21ms
+[2026-04-25T16:01:46.198+08:00] Loading photon module in node environment
+[2026-04-25T16:01:46.274+08:00] Photon loaded: @silvia-odwyer/photon-node (node)
+[2026-04-25T16:01:56.566+08:00] scaleImage start, scale factor: 2
+[2026-04-25T16:01:58.117+08:00] scaleImage done (Sharp): 609x263 -> 1218x526 (scale=2), cost: 1551ms
+[2026-04-25T16:02:12.073+08:00] scaleImage start, scale factor: 2
+[2026-04-25T16:02:12.090+08:00] scaleImage done (Sharp): 612x262 -> 1224x524 (scale=2), cost: 17ms
+[2026-04-25T16:02:28.472+08:00] scaleImage start, scale factor: 2
+[2026-04-25T16:02:28.489+08:00] scaleImage done (Sharp): 401x399 -> 802x798 (scale=2), cost: 17ms
+[2026-04-25T16:02:41.208+08:00] scaleImage start, scale factor: 2
+[2026-04-25T16:02:41.224+08:00] scaleImage done (Sharp): 606x264 -> 1212x528 (scale=2), cost: 16ms
+[2026-04-25T16:03:01.081+08:00] scaleImage start, scale factor: 2
+[2026-04-25T16:03:01.101+08:00] scaleImage done (Sharp): 301x768 -> 602x1536 (scale=2), cost: 20ms
+[2026-04-25T16:03:14.316+08:00] scaleImage start, scale factor: 2
+[2026-04-25T16:03:14.337+08:00] scaleImage done (Sharp): 301x768 -> 602x1536 (scale=2), cost: 21ms
+[2026-04-25T16:19:02.347+08:00] Loading photon module in node environment
+[2026-04-25T16:19:02.369+08:00] Photon loaded: @silvia-odwyer/photon-node (node)
+[2026-04-25T16:19:13.615+08:00] scaleImage start, scale factor: 2
+[2026-04-25T16:19:13.683+08:00] scaleImage done (Sharp): 609x263 -> 1218x526 (scale=2), cost: 68ms
+[2026-04-25T16:19:28.080+08:00] scaleImage start, scale factor: 2
+[2026-04-25T16:19:28.096+08:00] scaleImage done (Sharp): 610x262 -> 1220x524 (scale=2), cost: 16ms
+[2026-04-25T16:19:41.862+08:00] scaleImage start, scale factor: 2
+[2026-04-25T16:19:41.877+08:00] scaleImage done (Sharp): 401x399 -> 802x798 (scale=2), cost: 15ms
+[2026-04-25T16:19:54.187+08:00] scaleImage start, scale factor: 2
+[2026-04-25T16:19:54.203+08:00] scaleImage done (Sharp): 608x263 -> 1216x526 (scale=2), cost: 16ms
+[2026-04-25T16:20:10.197+08:00] scaleImage start, scale factor: 2
+[2026-04-25T16:20:10.219+08:00] scaleImage done (Sharp): 494x324 -> 988x648 (scale=2), cost: 22ms
+[2026-04-25T16:23:42.762+08:00] Loading photon module in node environment
+[2026-04-25T16:23:42.780+08:00] Photon loaded: @silvia-odwyer/photon-node (node)

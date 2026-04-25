@@ -8,6 +8,14 @@
       "yamlPath": "scripts\\templates\\evertro-login.yaml",
       "createdAt": "2026-04-24T17:18:57.193Z",
       "updatedAt": "2026-04-24T17:18:57.193Z"
+    },
+    {
+      "id": "7ee27714-7a0e-4dfb-a614-046f7e9956fc",
+      "name": "登录脚本v5",
+      "description": "",
+      "yamlPath": "scripts\\templates\\登录脚本v5.yaml",
+      "createdAt": "2026-04-25T08:20:47.969Z",
+      "updatedAt": "2026-04-25T08:20:47.969Z"
     }
   ]
 }
