@@ -14,7 +14,7 @@ import { PlaywrightAgent } from "@midscene/web/playwright";
 import { chromium } from "playwright";
 import { checkOptionalEnvVars, getMidsceneConfig } from "../utils/config.js";
 import { log, logError } from "../utils/logger.js";
-export async function createExplorationSession(initialUrl, maxSteps = 20, headless = true) {
+export async function createExplorationSession(initialUrl, maxSteps = 20, headless = true, deepLocate = false) {
     const config = getMidsceneConfig();
     const warnings = checkOptionalEnvVars();
     for (const warning of warnings) {
@@ -43,13 +43,21 @@ export async function createExplorationSession(initialUrl, maxSteps = 20, headle
     log("info", `页面已加载，当前 URL: ${startUrl}`);
     log("info", "正在初始化 Midscene Agent（等待 5 秒）...");
     await sleep(5000);
-    const agent = new PlaywrightAgent(page);
+    // 生成唯一报告文件名，方便后续凝固时定位报告
+    const reportFileName = `nl-script-${Date.now()}`;
+    const agent = new PlaywrightAgent(page, {
+        reportFileName,
+        generateReport: true,
+        autoPrintReportMsg: false,
+    });
     log("success", "Midscene Agent 初始化完成");
     return {
         agent,
         page,
         browser,
         headless,
+        deepLocate,
+        latestReportFile: undefined,
         log: {
             startUrl,
             steps: [],
@@ -59,21 +67,35 @@ export async function createExplorationSession(initialUrl, maxSteps = 20, headle
 export async function executeAndLog(session, action) {
     const start = Date.now();
     try {
-        await session.agent.aiAct(action);
+        await session.agent.aiAct(action, { deepLocate: session.deepLocate });
+        // 从 agent.reportFile 获取最新报告路径（非空时更新）
+        const reportFile = session.agent.reportFile;
         const step = {
             action,
             result: "success",
             durationMs: Date.now() - start,
+            deepLocate: session.deepLocate,
+            reportFile: reportFile,
         };
+        if (reportFile) {
+            session.latestReportFile = reportFile;
+        }
         session.log.steps.push(step);
         log("success", `[${step.durationMs}ms] AI 执行完成`);
     }
     catch (err) {
+        const reportFile = session.agent.reportFile;
         const step = {
             action,
             result: "error",
             durationMs: Date.now() - start,
+            deepLocate: session.deepLocate,
+            reportFile: reportFile,
+            errorMessage: err instanceof Error ? err.message : String(err),
         };
+        if (reportFile) {
+            session.latestReportFile = reportFile;
+        }
         session.log.steps.push(step);
         logError(err);
     }

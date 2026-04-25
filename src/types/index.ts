@@ -22,6 +22,52 @@ export interface ExplorationStep {
   action: string;
   result: ExplorationStepResult;
   durationMs?: number;
+  /** 是否使用深度定位（v1.6: deepLocate） */
+  deepLocate?: boolean;
+  /** Midscene 报告 HTML 文件路径（从 agent.reportFile 获取） */
+  reportFile?: string;
+  /** 错误信息（result 为 error 时） */
+  errorMessage?: string;
+}
+
+/**
+ * 单个 yamlFlow 条目
+ * 格式如 { "aiInput": "", "value": "..." } 或 { "aiTap": "" }
+ */
+export interface YamlFlowItem {
+  /** Midscene 原生动作类型键，如 aiInput / aiTap / sleep */
+  [actionKey: string]: unknown;
+}
+
+/**
+ * 从报告 JSON 解析出的单个任务执行记录
+ * 结构匹配 executions[].tasks[] 字段
+ */
+export interface ParsedExecution {
+  /** 执行名称，如 "Act - 在页面上随便说点什么" */
+  taskName: string;
+  /** 子类型：Plan / Input / Locate */
+  subType: string;
+  /** 原始用户指令 */
+  userInstruction: string;
+  /** 状态：finished / error */
+  status: string;
+  /** 执行耗时（毫秒） */
+  durationMs: number;
+  /** 动作列表（fallback 用） */
+  actions?: Array<{
+    type: string;
+    param: Record<string, unknown>;
+  }>;
+  /**
+   * Midscene 自动生成的 YAML flow 片段，可直接拼接
+   * 格式如 [{ "aiInput": "", "value": "你好" }, { "aiTap": "" }]
+   */
+  yamlFlow?: YamlFlowItem[];
+  /** 断言/输出文字，存于 task.output.output */
+  outputOutput?: string;
+  /** 是否继续规划（最后一步 Plan 任务为 false），存于 task.output.shouldContinuePlanning */
+  shouldContinuePlanning?: boolean;
 }
 
 export interface ExplorationLog {
@@ -87,6 +133,11 @@ export interface YamlScript {
     replanningCycleLimit?: number;
     aiActContext?: string;
     cache?: boolean | { strategy?: string; id?: string };
+    /**
+     * 是否启用深度定位（v1.6: deepLocate）
+     * 启用后 AI 会进行更精确的元素定位，适合复杂页面
+     */
+    deepLocate?: boolean;
   };
   tasks: Array<{
     name: string;

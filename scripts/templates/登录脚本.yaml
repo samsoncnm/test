@@ -1,0 +1,18 @@
+web:
+  url: https://test-pm.evertro.tech/
+tasks:
+  - name: "登录脚本"
+    flow:
+      - aiInput: ""
+        value: testrole
+        locate: 账号输入框
+      - aiInput: ""
+        value: admin123
+        locate: 密码输入框
+      - aiTap: ""
+        locate: 已阅读复选框
+      - aiTap: ""
+        locate: 登录按钮
+      - aiAssert: 断言通过：左侧菜单包含"内容管理"选项
+agent:
+  deepLocate: true

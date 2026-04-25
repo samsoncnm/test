@@ -23,12 +23,17 @@ export interface ExplorationSession {
   browser: Browser;
   log: ExplorationLog;
   headless: boolean;
+  /** 最近一次 aiAct 执行后的报告 HTML 文件路径（从 agent.reportFile 获取） */
+  latestReportFile?: string;
+  /** 是否启用深度定位（deepLocate） */
+  deepLocate: boolean;
 }
 
 export async function createExplorationSession(
   initialUrl: string,
   maxSteps = 20,
   headless = true,
+  deepLocate = false,
 ): Promise<ExplorationSession> {
   const config = getMidsceneConfig();
   const warnings = checkOptionalEnvVars();
@@ -64,7 +69,13 @@ export async function createExplorationSession(
   log("info", "正在初始化 Midscene Agent（等待 5 秒）...");
   await sleep(5000);
 
-  const agent = new PlaywrightAgent(page);
+  // 生成唯一报告文件名，方便后续凝固时定位报告
+  const reportFileName = `nl-script-${Date.now()}`;
+  const agent = new PlaywrightAgent(page, {
+    reportFileName,
+    generateReport: true,
+    autoPrintReportMsg: false,
+  });
 
   log("success", "Midscene Agent 初始化完成");
 
@@ -73,6 +84,8 @@ export async function createExplorationSession(
     page,
     browser,
     headless,
+    deepLocate,
+    latestReportFile: undefined,
     log: {
       startUrl,
       steps: [],
@@ -83,20 +96,41 @@ export async function createExplorationSession(
 export async function executeAndLog(session: ExplorationSession, action: string): Promise<void> {
   const start = Date.now();
   try {
-    await session.agent.aiAct(action);
+    await session.agent.aiAct(action, { deepLocate: session.deepLocate });
+
+    // 从 agent.reportFile 获取最新报告路径（非空时更新）
+    const reportFile = (session.agent as unknown as { reportFile?: string }).reportFile;
+
     const step: ExplorationStep = {
       action,
       result: "success",
       durationMs: Date.now() - start,
+      deepLocate: session.deepLocate,
+      reportFile: reportFile,
     };
+
+    if (reportFile) {
+      session.latestReportFile = reportFile;
+    }
+
     session.log.steps.push(step);
     log("success", `[${step.durationMs}ms] AI 执行完成`);
   } catch (err) {
+    const reportFile = (session.agent as unknown as { reportFile?: string }).reportFile;
+
     const step: ExplorationStep = {
       action,
       result: "error",
       durationMs: Date.now() - start,
+      deepLocate: session.deepLocate,
+      reportFile: reportFile,
+      errorMessage: err instanceof Error ? err.message : String(err),
     };
+
+    if (reportFile) {
+      session.latestReportFile = reportFile;
+    }
+
     session.log.steps.push(step);
     logError(err);
   }

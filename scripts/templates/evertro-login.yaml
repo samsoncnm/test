@@ -1,0 +1,6 @@
+web:
+  url: https://test-pm.evertro.tech/
+tasks:
+  - name: 登录流程
+    flow:
+      - ai: 输入账号 testrole，输入密码 admin123，点击已阅读，点击登录按钮

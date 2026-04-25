@@ -40,12 +40,16 @@ export async function runExplore(params: {
   target: string;
   maxSteps?: number;
   headless?: boolean;
+  deepLocate?: boolean;
 }): Promise<void> {
-  const { target, maxSteps = 20 } = params;
+  const { target, maxSteps = 20, deepLocate = false } = params;
 
   logSection("🧭 探索模式");
   log("info", `目标: ${target}`);
   log("info", `最大步数: ${maxSteps}`);
+  if (deepLocate) {
+    log("info", "深度定位: 启用（deepLocate）");
+  }
 
   // 解析 URL：如果用户输入的是域名，自动补全 https://
   let url = target;
@@ -78,7 +82,7 @@ export async function runExplore(params: {
   });
 
   try {
-    session = await createExplorationSession(url, maxSteps, params.headless ?? true);
+    session = await createExplorationSession(url, maxSteps, params.headless ?? true, deepLocate);
 
     logSection("💬 探索会话");
     log("info", "可用命令:");
@@ -124,10 +128,11 @@ export async function runExplore(params: {
         const description = await prompt("请输入脚本描述（直接回车跳过）: ");
 
         if (!session) break;
-        const yamlContent = freezeToYaml({
+        const yamlContent = await freezeToYaml({
           name,
           description,
           explorationLog: session.log,
+          reportHtmlPath: session.latestReportFile,
         });
 
         const meta = await saveScript({ name, description, yamlContent });

@@ -31,9 +31,25 @@ export async function runScript(scriptName) {
             args = ["midscene", absoluteYamlPath];
         }
         const child = spawn(cmd, args, {
-            stdio: "inherit",
+            stdio: ["ignore", "pipe", "pipe"],
             shell: process.platform === "win32",
             cwd: projectRoot,
+        });
+        child.stdout?.on("data", (chunk) => {
+            const lines = chunk.toString().split("\n");
+            for (const line of lines) {
+                if (line.trim() === "")
+                    continue;
+                process.stdout.write(`${line}\n`);
+            }
+        });
+        child.stderr?.on("data", (chunk) => {
+            const lines = chunk.toString().split("\n");
+            for (const line of lines) {
+                if (line.trim() === "")
+                    continue;
+                process.stderr.write(`${line}\n`);
+            }
         });
         child.on("close", (code) => {
             if (code === 0) {

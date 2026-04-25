@@ -89,6 +89,34 @@ await agent.recordToReport('登录页面', { content: '描述信息' });
 
 // 获取执行过程数据
 const logContent = agent._unstableLogContent();
+
+// 获取报告 HTML 字符串
+const html = agent.reportHTMLString();
+
+// 获取报告文件路径（构造时 generateReport: true 才有值）
+const reportPath = agent.reportFile;
+
+// 从报告文件提取数据（v1.7 新增）
+import { splitReportFile, reportFileToMarkdown } from '@midscene/core';
+
+// 同步：提取截图和 JSON 文件
+const result = splitReportFile({
+  htmlPath: './midscene_run/report/index.html',
+  outputDir: './output-data',
+});
+// result.executionJsonFiles, result.screenshotFiles
+
+// async：转录为 Markdown（可配合 Remotion 生成回放视频）
+const mdResult = await reportFileToMarkdown({
+  htmlPath: './midscene_run/report/index.html',
+  outputDir: './output-md',
+});
+
+// 直接在代码里运行 YAML 脚本
+const { result } = await agent.runYaml(`
+tasks:
+  - ai: 点击登录按钮
+`);
 ```
 
 ## 3. Playwright 集成（本项目主要方式）
@@ -192,10 +220,37 @@ DEEPSEEK_MODEL_NAME=deepseek-v4-flash
 ### 4.4 关键配置参数
 
 ```bash
-MIDSCENE_REPLANNING_CYCLE_LIMIT=20       # aiAct 最大重规划次数
-MIDSCENE_MODEL_REASONING_ENABLED=true    # 模型推理/深度思考开关
-MIDSCENE_MODEL_REASONING_EFFORT=medium   # 推理强度
-MIDSCENE_MODEL_EXTRA_BODY_JSON='{}'      # 额外请求参数
+# 超时与重试
+MIDSCENE_MODEL_TIMEOUT=180000             # AI 调用硬超时（毫秒），默认 180000
+MIDSCENE_MODEL_RETRY_COUNT=1              # AI 调用失败重试次数，默认 1
+MIDSCENE_MODEL_RETRY_INTERVAL=2000        # 重试间隔（毫秒），默认 2000
+
+# 模型采样
+MIDSCENE_MODEL_TEMPERATURE=0.7           # 采样温度
+MIDSCENE_MODEL_MAX_TOKENS=2048            # 响应最大 token 数
+
+# 推理/思考
+MIDSCENE_MODEL_REASONING_ENABLED=true     # 开启/关闭模型推理/思考
+MIDSCENE_MODEL_REASONING_EFFORT=medium   # 推理力度：low/medium/high
+MIDSCENE_MODEL_REASONING_BUDGET=2048     # 思考 token 预算（数字）
+
+# 请求参数与代理
+MIDSCENE_MODEL_EXTRA_BODY_JSON='{}'      # 额外请求体参数
+MIDSCENE_MODEL_INIT_CONFIG_JSON='{}'     # OpenAI SDK 初始化配置（覆盖）
+MIDSCENE_MODEL_HTTP_PROXY=http://127.0.0.1:8080
+MIDSCENE_MODEL_SOCKS_PROXY=socks5://127.0.0.1:1080
+
+# 运行时
+MIDSCENE_RUN_DIR=./midscene_run           # 运行产物目录（默认 midscene_run）
+MIDSCENE_PREFERRED_LANGUAGE=Chinese        # 模型响应语言，默认跟随系统时区
+
+# 调试日志（也会写入 ./midscene_run/log/）
+DEBUG=midscene:ai:profile:stats          # 打印 token/时间统计
+DEBUG=midscene:ai:call                    # 打印 AI 响应详情
+DEBUG=midscene:*                          # 打印所有调试日志
+
+# 旧版兼容
+MIDSCENE_REPLANNING_CYCLE_LIMIT=20        # 已废弃，推荐用 agent option
 PW_TEST_SCREENSHOT_NO_FONTS_READY=1      # 解决字体等待超时
 ```
 
@@ -203,16 +258,18 @@ PW_TEST_SCREENSHOT_NO_FONTS_READY=1      # 解决字体等待超时
 
 ```typescript
 new PlaywrightAgent(page, {
-  generateReport: true,          // 生成报告
+  generateReport: true,          // 生成报告（默认 true）
+  persistExecutionDump: true,    // v1.7: 同时写出 JSON dump 文件（默认 false）
   reportFileName: 'my-report',   // 报告文件名
   aiActContext: '背景知识',       // 全局上下文
   cacheId: 'login-cache',        // 缓存 ID
   replanningCycleLimit: 20,      // 重规划上限
   waitAfterAction: 300,          // 每步后等待 ms
-  screenshotShrinkFactor: 1,     // 截图缩放比（移动端可设 2）
+  screenshotShrinkFactor: 1,    // 截图缩放比（移动端可设 2）
   forceSameTabNavigation: true,  // 拦截新标签页（默认 true）
+  outputFormat: 'single-html',  // 'single-html' 或 'html-and-external-assets'
   modelConfig: { ... },         // 代码内模型配置
-  outputFormat: 'single-html',  // 报告格式
+  onTaskStartTip: (tip) => {}, // v1.7: 任务开始前的回调
 });
 ```
 
@@ -294,8 +351,8 @@ const agent = new PlaywrightAgent(page, {
 
 | 版本 | 关键变更 |
 |------|---------|
-| **v1.7** | 报告文件解析 + Qwen 3.6 适配 |
-| **v1.6** | CDP 连接模式 + 双指缩放 + GPT-5/5.4 |
+| **v1.7** | 报告文件解析（splitReportFile/reportFileToMarkdown）+ Qwen 3.6 + `persistExecutionDump` + `onTaskStartTip` + `report-tool` CLI |
+| **v1.6** | CDP 连接模式 + 双指缩放 + GPT-5/5.4 + `deepLocate` 更名 + `AbortSignal` 支持 |
 | **v1.5** | 鸿蒙支持 + Qwen3.5 + doubao-seed 2.0 |
 | **v1.4** | Skills 技能包（Claude Code 集成）+ 桌面 MCP |
 | **v1.3** | PC 桌面自动化 + deepThink 增强规划 |
@@ -317,6 +374,7 @@ const agent = new PlaywrightAgent(page, {
 | `OPENAI_BASE_URL` | `MIDSCENE_MODEL_BASE_URL` | v1.0 |
 | `deepThink`（定位参数） | `deepLocate` | v1.6 |
 | `aiActionContext` | `aiActContext` | v1.0+ |
+| `MIDSCENE_REPLANNING_CYCLE_LIMIT`（环境变量） | `replanningCycleLimit`（agent option） | v1.7 推荐 |
 
 ## 11. 常见问题速查
 
@@ -328,4 +386,8 @@ const agent = new PlaywrightAgent(page, {
 | 文件上传 | `aiTap('上传按钮', { fileChooserAccept: '/path/to/file' })` |
 | 新标签页处理 | 设置 `forceSameTabNavigation: false`，需为新标签页新建 Agent |
 | Windows 下 export 不可用 | 使用 `.env` 文件 + `dotenv/config`，或 `$env:VAR="value"` |
-| 大报告加载慢 | 使用 `outputFormat: 'html-and-external-assets'` |
+| 大报告加载慢 | 使用 `outputFormat: 'html-and-external-assets'`，需通过 HTTP 服务器访问 |
+| `html-and-external-assets` 报告打不开 | 必须通过 HTTP 服务器访问（`npx serve` 或 `python -m http.server`），`file://` 协议有 CORS 限制 |
+| 集成 LangSmith | `npm i langsmith`，设 `MIDSCENE_LANGSMITH_DEBUG=1` 和 `LANGCHAIN_*` 环境变量 |
+| 集成 Langfuse | 安装 `@langfuse/openai @langfuse/otel @opentelemetry/sdk-node`，初始化 `NodeSDK`，设 `MIDSCENE_LANGFUSE_DEBUG=1` |
+| Codex App Server（免 API Key） | 设 `MIDSCENE_MODEL_BASE_URL=codex://app-server`，需 `codex login` 登录 |

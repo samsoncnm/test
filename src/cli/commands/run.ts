@@ -39,9 +39,25 @@ export async function runScript(scriptName: string): Promise<void> {
     }
 
     const child = spawn(cmd, args, {
-      stdio: "inherit",
+      stdio: ["ignore", "pipe", "pipe"],
       shell: process.platform === "win32",
       cwd: projectRoot,
+    });
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      const lines = chunk.toString().split("\n");
+      for (const line of lines) {
+        if (line.trim() === "") continue;
+        process.stdout.write(`${line}\n`);
+      }
+    });
+
+    child.stderr?.on("data", (chunk: Buffer) => {
+      const lines = chunk.toString().split("\n");
+      for (const line of lines) {
+        if (line.trim() === "") continue;
+        process.stderr.write(`${line}\n`);
+      }
     });
 
     child.on("close", (code) => {

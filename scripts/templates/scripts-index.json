@@ -1,4 +1,13 @@
 {
   "version": 1,
-  "scripts": []
+  "scripts": [
+    {
+      "id": "b9cba7df-795a-4715-aa4a-03b809d1cdd7",
+      "name": "evertro-login",
+      "description": "登录流程",
+      "yamlPath": "scripts\\templates\\evertro-login.yaml",
+      "createdAt": "2026-04-24T17:18:57.193Z",
+      "updatedAt": "2026-04-24T17:18:57.193Z"
+    }
+  ]
 }
