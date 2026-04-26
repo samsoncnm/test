@@ -8,7 +8,13 @@ import pc from "picocolors";
 import { logSection } from "../utils/logger.js";
 import { runExplore } from "./commands/explore.js";
 import { runScript } from "./commands/run.js";
-import { cleanCache, clearAllCache, listScripts, removeScript } from "./commands/scripts.js";
+import {
+  cleanCache,
+  clearAllCache,
+  listCache,
+  listScripts,
+  removeScript,
+} from "./commands/scripts.js";
 
 const program = new Command();
 
@@ -104,6 +110,18 @@ scriptsCmd
   .action(async () => {
     try {
       await clearAllCache();
+    } catch (err) {
+      console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+scriptsCmd
+  .command("cache-list")
+  .description("列出 midscene_run/cache/ 目录下的所有缓存文件")
+  .action(async () => {
+    try {
+      await listCache();
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);

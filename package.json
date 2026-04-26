@@ -15,23 +15,23 @@
     "postinstall": "pnpm build"
   },
   "dependencies": {
-    "@midscene/web": "^1.7.5",
-    "@midscene/core": "^1.7.5",
     "@midscene/cli": "^1.7.5",
-    "playwright": "^1.49.0",
+    "@midscene/core": "^1.7.5",
+    "@midscene/web": "^1.7.5",
     "@playwright/test": "^1.49.0",
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",
+    "picocolors": "^1.1.1",
+    "playwright": "^1.49.0",
     "uuid": "^10.0.0",
-    "yaml": "^2.6.1",
-    "picocolors": "^1.1.1"
+    "yaml": "^2.6.1"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.10.0",
     "@types/uuid": "^10.0.0",
-    "typescript": "^5.7.2",
     "tsx": "^4.19.2",
-    "@biomejs/biome": "^1.9.4"
+    "typescript": "^5.7.2"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -8,9 +8,9 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { parse, stringify } from "yaml";
 import { printMetricsSummary, saveMetrics } from "../../storage/metrics-store.js";
-import { getScriptPath } from "../../storage/script-store.js";
+import { findScriptByFuzzyName, getScriptPath } from "../../storage/script-store.js";
 import type { MetricsReport } from "../../types/index.js";
-import { log, logRun } from "../../utils/logger.js";
+import { log } from "../../utils/logger.js";
 import {
   parseMetricsFromExecutions,
   parseReportFile,
@@ -21,15 +21,24 @@ export async function runScript(
   scriptName: string,
   options?: { headful?: boolean; keepWindow?: boolean; noCache?: boolean },
 ): Promise<void> {
-  const yamlPath = await getScriptPath(scriptName);
+  const result = await findScriptByFuzzyName(scriptName);
 
-  if (!yamlPath) {
+  if (!result.script) {
     throw new Error(`脚本 "${scriptName}" 不存在，请先使用 explore 命令创建`);
   }
 
-  logRun(scriptName);
+  const yamlPath = await getScriptPath(result.script.name);
+  const actualName = result.script.name;
+
+  if (result.matchedBy !== "exact") {
+    log("warn", `脚本 "${scriptName}" 未找到，猜测你想运行 "${actualName}"？继续执行...`);
+  }
+
   log("info", `脚本路径: ${yamlPath}`);
 
+  if (!yamlPath) {
+    throw new Error(`脚本 "${actualName}" 的文件已丢失`);
+  }
   const absoluteYamlPath = resolve(yamlPath);
   const projectRoot = process.cwd();
 
@@ -73,7 +82,7 @@ export async function runScript(
     }
 
     try {
-      await runMidscene(projectRoot, absoluteYamlPath, scriptName);
+      await runMidscene(projectRoot, absoluteYamlPath, actualName, options);
     } finally {
       if (needsInject && originalContent !== null) {
         writeFileSync(absoluteYamlPath, originalContent);
@@ -94,23 +103,29 @@ export async function runScript(
 async function runMidscene(
   projectRoot: string,
   yamlPath: string,
-  scriptName: string,
+  actualName: string,
+  options?: { headful?: boolean; keepWindow?: boolean },
 ): Promise<void> {
   const midsceneBin = join(projectRoot, "node_modules", "@midscene", "cli", "bin", "midscene");
+  const scriptStartTime = Date.now();
+
+  const cliFlags: string[] = [];
+  if (options?.headful) cliFlags.push("--headed");
+  if (options?.keepWindow) cliFlags.push("--keep-window");
 
   let cmd: string;
-  let args: string[];
+  let midsceneArgs: string[];
 
   if (existsSync(midsceneBin)) {
     cmd = "node";
-    args = [midsceneBin, yamlPath];
+    midsceneArgs = [midsceneBin, ...cliFlags, yamlPath];
   } else {
     cmd = "npx";
-    args = ["midscene", yamlPath];
+    midsceneArgs = ["midscene", ...cliFlags, yamlPath];
   }
 
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, {
+    const child = spawn(cmd, midsceneArgs, {
       stdio: ["ignore", "pipe", "pipe"],
       cwd: projectRoot,
     });
@@ -132,41 +147,50 @@ async function runMidscene(
     });
 
     child.on("close", async (code) => {
+      const scriptEndTime = Date.now();
       if (code === 0) {
         log("success", "脚本执行完成");
+      } else {
+        log("warn", `脚本执行失败，退出码: ${code}，仍尝试解析已有报告`);
+      }
 
-        try {
-          const htmlFileName = `${scriptName}.html`;
-          const reportDir = join(projectRoot, "midscene_run", "report");
-          const htmlPath = join(reportDir, htmlFileName);
+      // metrics 解析：无论成功还是失败都执行
+      // Midscene HTML 报告在首个任务失败时仍会写入已完成的数据
+      try {
+        const htmlFileName = `${actualName}.html`;
+        const reportDir = join(projectRoot, "midscene_run", "report");
+        const htmlPath = join(reportDir, htmlFileName);
 
-          if (existsSync(htmlPath)) {
-            await waitForExecutionJson(reportDir, htmlFileName, 3000);
+        if (existsSync(htmlPath)) {
+          await waitForExecutionJson(reportDir, htmlFileName, 3000);
 
-            const executions = parseReportFile(htmlPath);
-            if (executions.length > 0) {
-              const metricsData = parseMetricsFromExecutions({
-                executions,
-                htmlPath,
-              });
+          const executions = parseReportFile(htmlPath);
+          if (executions.length > 0) {
+            const metricsData = parseMetricsFromExecutions({
+              executions,
+              htmlPath,
+              scriptStartTime,
+              scriptEndTime,
+            });
 
-              const metricsReport: MetricsReport = {
-                version: 1,
-                scriptName,
-                generatedAt: new Date().toISOString(),
-                mode: "run",
-                ...metricsData,
-              };
+            const metricsReport: MetricsReport = {
+              version: 1,
+              scriptName: actualName,
+              generatedAt: new Date().toISOString(),
+              mode: "run",
+              ...metricsData,
+            };
 
-              const metricsPath = await saveMetrics(metricsReport);
-              printMetricsSummary(metricsReport);
-              log("info", `指标报告: ${metricsPath}`);
-            }
+            const metricsPath = await saveMetrics(metricsReport);
+            printMetricsSummary(metricsReport);
+            log("info", `指标报告: ${metricsPath}`);
           }
-        } catch {
-          // metrics 收集失败静默跳过
         }
+      } catch (e) {
+        log("warn", `指标收集失败: ${(e as Error).message}`);
+      }
 
+      if (code === 0) {
         resolve();
       } else {
         reject(new Error(`脚本执行失败，退出码: ${code}`));

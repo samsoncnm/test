@@ -24,7 +24,10 @@ export interface StepMetrics {
   userInstruction: string;
   /** Plan 任务决定整体状态 */
   status: "finished" | "failed";
-  /** 墙钟耗时 = timing.end - timing.start（包含截图+推理+执行） */
+  /**
+   * 墙钟耗时 = Σ(task.end - task.start) of all tasks in this step.
+   * Double-pass 时同一个 step 可能执行多遍，累加所有遍的耗时能反映总代价。
+   */
   wallTimeMs: number;
   /** AI 推理耗时 = Σ timing.cost（Plan / Locate / Assert 任务累加） */
   aiTimeMs: number;
@@ -41,6 +44,9 @@ export interface StepMetrics {
   }>;
   /** 每个子 task 后的截图路径（相对路径） */
   screenshots?: string[];
+  /** 缓存命中标记（通过 task.output.hitBy.from === "Cache" 检测）
+   * 命中时 SDK 不调用 AI，故 usage 为空，但 step 仍存在 */
+  hitByCache?: boolean;
 }
 
 /**
@@ -71,6 +77,8 @@ export interface MetricsReport {
     totalAiTimeMs: number;
     totalTokens: number;
     totalCachedTokens: number;
+    /** 缓存命中 step 数（通过 hitBy.from === "Cache" 检测，命中时 SDK 不调用 AI） */
+    hitByCacheCount: number;
     modelBreakdown: Array<{
       modelName: string;
       intent: string;
@@ -178,35 +186,10 @@ export interface MidsceneModelConfig {
 }
 
 /**
- * 主模型配置（视觉定位）
- * 通过 MIDSCENE_MODEL_* 环境变量注入
+ * 主模型配置（qwen3-vl-plus）
+ * 同时负责视觉定位和任务规划。
  */
 export interface MidsceneConfig extends MidsceneModelConfig {}
-
-/**
- * Planning 模型配置（规划决策）
- * 通过 MIDSCENE_PLANNING_MODEL_* 环境变量注入
- * 用于复杂的任务规划、多步推理决策
- * 仅当配置了 MIDSCENE_PLANNING_MODEL_API_KEY 时生效
- */
-export interface PlanningModelConfig extends MidsceneModelConfig {}
-
-/**
- * Insight 模型配置（页面理解与分析）
- * 通过 MIDSCENE_INSIGHT_MODEL_* 环境变量注入
- * 用于 aiQuery / aiAssert 等需要深度页面理解的场景
- * 仅当配置了 MIDSCENE_INSIGHT_MODEL_API_KEY 时生效
- */
-export interface InsightModelConfig extends MidsceneModelConfig {}
-
-/**
- * 多模型配置集合
- */
-export interface MultiModelConfig {
-  default: MidsceneConfig;
-  planning?: PlanningModelConfig;
-  insight?: InsightModelConfig;
-}
 
 export interface YamlScript {
   web?: {

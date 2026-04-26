@@ -112,3 +112,30 @@ export async function scriptExists(name: string): Promise<boolean> {
   const script = await getScript(name);
   return script !== null;
 }
+
+export interface ScriptSearchResult {
+  script: ScriptMeta | null;
+  matchedBy?: "exact" | "prefix" | "fuzzy";
+}
+
+/**
+ * 模糊查找脚本：精确 → 前缀 → 包含
+ * 单 token 场景（如 "densave"）可以找到 "densave 登录流程"
+ */
+export async function findScriptByFuzzyName(name: string): Promise<ScriptSearchResult> {
+  const scripts = await loadAllScripts();
+
+  // 1. 精确匹配
+  const exact = scripts.find((s) => s.name === name);
+  if (exact) return { script: exact, matchedBy: "exact" };
+
+  // 2. 前缀匹配（以 name + 空格 开头，防止 densave 匹配到 densaveX）
+  const prefix = scripts.find((s) => s.name.startsWith(`${name} `));
+  if (prefix) return { script: prefix, matchedBy: "prefix" };
+
+  // 3. 包含匹配（脚本名中包含输入串）
+  const includes = scripts.find((s) => s.name.includes(name));
+  if (includes) return { script: includes, matchedBy: "fuzzy" };
+
+  return { script: null };
+}

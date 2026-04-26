@@ -2,13 +2,7 @@
  * Midscene 适配器
  * 封装 Playwright + PlaywrightAgent 的初始化和生命周期管理
  *
- * 多模型支持：
- * - Planning 模型：用于复杂任务规划（通过 MIDSCENE_PLANNING_MODEL_* 配置）
- * - Insight 模型：用于深度页面理解（通过 MIDSCENE_INSIGHT_MODEL_* 配置）
- * - 主模型（视觉定位）：通过 MIDSCENE_MODEL_* 配置
- *
- * 当 PLANNING/INSIGHT 模型配置后，Midscene 会自动将复杂推理卸载到专用模型，
- * 主模型专注视觉定位，从而提升执行效率和准确性。
+ * 单模型架构：主模型（qwen3-vl-plus）同时负责视觉定位和任务规划。
  */
 
 import { PlaywrightAgent } from "@midscene/web/playwright";
@@ -41,15 +35,7 @@ export async function createExplorationSession(
     log("warn", warning);
   }
 
-  // 多模型配置提示
-  if (config.planning) {
-    log("info", `Planning 模型: ${config.planning.modelName} (${config.planning.modelFamily})`);
-  } else {
-    log("info", `主模型: ${config.default.modelName} (${config.default.modelFamily})，兼任规划`);
-  }
-  if (config.insight) {
-    log("info", `Insight 模型: ${config.insight.modelName} (${config.insight.modelFamily})`);
-  }
+  log("info", `主模型: ${config.modelName} (${config.modelFamily})，兼任规划`);
 
   log("info", `正在启动 Chromium 浏览器...${headless ? "(headless)" : "(headful 有头模式)"}`);
   const browser = await chromium.launch({
@@ -61,7 +47,7 @@ export async function createExplorationSession(
   await page.setViewportSize({ width: 1280, height: 768 });
 
   log("info", `正在访问: ${initialUrl}`);
-  await page.goto(initialUrl, { waitUntil: "domcontentloaded" });
+  await page.goto(initialUrl, { waitUntil: "networkidle" });
 
   const startUrl = page.url();
   log("info", `页面已加载，当前 URL: ${startUrl}`);

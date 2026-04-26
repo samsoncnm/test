@@ -90,6 +90,55 @@ export async function waitForExecutionJson(
   }
 }
 
+/** 归一化 exec.name，提取动作类型和描述，用于去重
+ * Midscene 的 splitReportFile 对 double-pass 中同一 flow item 生成不同 execution.id（UUID），
+ * 但 exec.name 相同（如 "Input - 账号/手机号输入框"）。按归一化后的 name 分组即可合并 double-pass 重复。
+ * 源码证据：node_modules/@midscene/core/dist/es/report.mjs L181-211 collectDedupedExecutions
+ */
+function normalizeExecName(name: string): string {
+  return (name || "")
+    .toLowerCase()
+    .replace(
+      /^(input|tap|assert|sleep|scroll|hover|keyboardpress|doubleclick|rightclick|locate|plan)\s*[-–—]\s*/i,
+      "$1:",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** 从 task 参数推断 userInstruction
+ * 源码证据：midscene_run/report/1.execution.json — Locate 任务用 param.prompt，
+ * Action Space Input 任务用 param.value + param.locate.description
+ */
+function inferUserInstruction(
+  rawTask: NonNullable<ParsedExecution["_rawTask"]>,
+  execName: string,
+): string {
+  const param = (rawTask as Record<string, unknown>).param as Record<string, unknown> | undefined;
+  if (!param) return execName;
+  const subType = (rawTask as Record<string, unknown>).subType as string | undefined;
+
+  if (subType === "Locate" || subType === "Plan") {
+    return String(param.prompt ?? param.userInstruction ?? execName);
+  }
+  if (subType === "Input") {
+    const value = String(param.value ?? "");
+    const locate = (param.locate as Record<string, unknown>)?.description as string | undefined;
+    return locate ? `输入"${value}"到${locate}` : `输入"${value}"`;
+  }
+  if (subType === "Tap") {
+    const locate = (param.locate as Record<string, unknown>)?.description as string | undefined;
+    return locate ? `点击${locate}` : execName;
+  }
+  if (subType === "Sleep") {
+    return `等待${param.timeMs ?? 3000}ms`;
+  }
+  if (subType === "Assert") {
+    return String(param.dataDemand ?? execName);
+  }
+  return execName;
+}
+
 /** 辅助：将 Midscene usage 字段映射为 TaskUsage */
 function mapUsage(raw?: Record<string, unknown>): TaskUsage | undefined {
   if (!raw) return undefined;
@@ -158,21 +207,33 @@ export function detectPassInfo(htmlPath: string): { passIds: string[]; passCount
 
 /**
  * 从 .execution.json 数据中提取 metrics
- * 分组逻辑：按 execution.id 分组（每个 execution.id = 一个完整的 aiAct 调用）
- * 对 double-pass 完全免疫（SDK 执行 N 遍，分 N 个 execution.id 组）
+ * 分组逻辑：按 exec.name 归一化分组（合并 double-pass 重复）
+ * 源码证据：node_modules/@midscene/core/dist/es/report.mjs L181-211
+ * — collectDedupedExecutions 仅对相同 execution.id 去重，double-pass 中同一
+ *   flow item 产生不同 UUID 全部保留，因此按 exec.name 归一化分组可自动去重。
  */
 export function parseMetricsFromExecutions(params: {
   executions: ParsedExecution[];
   sdkVersion?: string;
   startUrl?: string;
   htmlPath?: string;
+  /**
+   * 可选：脚本进程启动时间（Date.now()），用于计算更准确的脚本总墙钟耗时。
+   */
+  scriptStartTime?: number;
+  /**
+   * 可选：脚本进程结束时间（Date.now()）。若只传 scriptStartTime，则用 Date.now() 作为 end。
+   */
+  scriptEndTime?: number;
 }): Pick<MetricsReport, "environment" | "summary" | "steps" | "passInfo"> {
-  // 按 execution.id 分组
+  // 按 exec.name 归一化分组（合并 double-pass 重复）
   const stepMap = new Map<
     string,
     {
       userInstruction: string;
       tasks: NonNullable<ParsedExecution["_rawTask"]>[];
+      /** 缓存命中标记（任一 task 有 hitBy.from === "Cache" 即为 true） */
+      hitByCache: boolean;
     }
   >();
 
@@ -180,15 +241,26 @@ export function parseMetricsFromExecutions(params: {
     const rawTask = exec._rawTask;
     if (!rawTask) continue;
 
-    const groupKey = exec.executionId || `no-id-${stepMap.size}`;
+    // B1: 改用 exec.name 归一化分组，替代 execution.id
+    const groupKey = normalizeExecName(exec.taskName);
 
     if (!stepMap.has(groupKey)) {
+      // B2: 从 task 参数推断 userInstruction，替代 param.userInstruction
       stepMap.set(groupKey, {
-        userInstruction: (rawTask.param?.userInstruction as string) ?? exec.userInstruction ?? "",
+        userInstruction: inferUserInstruction(rawTask, exec.taskName),
         tasks: [],
+        hitByCache: false,
       });
     }
     stepMap.get(groupKey)!.tasks.push(rawTask);
+
+    // B3: 检测缓存命中（hitBy.from === "Cache"）
+    const taskRecord = rawTask as Record<string, unknown>;
+    const output = taskRecord.output as Record<string, unknown> | undefined;
+    const hitBy = output?.hitBy as Record<string, unknown> | undefined;
+    if (hitBy?.from === "Cache") {
+      stepMap.get(groupKey)!.hitByCache = true;
+    }
   }
 
   const steps: StepMetrics[] = [];
@@ -198,10 +270,14 @@ export function parseMetricsFromExecutions(params: {
     if (tasks.length === 0) continue;
     const task0 = tasks[0]!;
 
-    // wallTimeMs = 最后一个 task.end - 第一个 task.start
-    const firstStart = task0.timing?.start ?? 0;
-    const lastEnd = tasks.reduce((max, t) => Math.max(max, t.timing?.end ?? 0), 0);
-    const wallTimeMs = Math.max(0, lastEnd - firstStart);
+    // wallTimeMs = sum of each task's actual duration (task.end - task.start)
+    // Previously used lastEnd - firstStart which spans across all double-pass executions,
+    // giving inflated times like ~4100s per step instead of the real ~5s
+    const wallTimeMs = tasks.reduce((sum, t) => {
+      const start = t.timing?.start ?? 0;
+      const end = t.timing?.end ?? 0;
+      return sum + Math.max(0, end - start);
+    }, 0);
 
     // aiTimeMs = 累加所有 Plan / Locate / Assert 任务的 timing.cost
     const aiTimeMs = tasks.reduce((sum, t) => {
@@ -315,19 +391,25 @@ export function parseMetricsFromExecutions(params: {
       locateUsage,
       actions: actions.length > 0 ? actions : undefined,
       screenshots: screenshots.length > 0 ? screenshots : undefined,
+      hitByCache: group.hitByCache,
     });
   }
 
   // 汇总
-  let totalWallTimeMs = 0;
+  // 若调用方传入了 scriptStartTime（run.ts），用进程级别墙钟时间；
+  // 否则回退到 Σ step.aiTimeMs（适合 explore 模式，无 double-pass 问题）。
+  const totalWallTimeMs = params.scriptStartTime
+    ? (params.scriptEndTime ?? Date.now()) - params.scriptStartTime
+    : steps.reduce((sum, s) => sum + s.aiTimeMs, 0);
   let totalAiTimeMs = 0;
   let totalTokens = 0;
   let totalCachedTokens = 0;
+  let hitByCacheCount = 0;
   const modelMap = new Map<string, { tokens: number; aiTime: number }>();
 
   for (const step of steps) {
-    totalWallTimeMs += step.wallTimeMs;
     totalAiTimeMs += step.aiTimeMs;
+    if (step.hitByCache) hitByCacheCount++;
     if (step.usage) {
       totalTokens += step.usage.totalTokens;
       totalCachedTokens += step.usage.cachedTokens;
@@ -378,15 +460,15 @@ export function parseMetricsFromExecutions(params: {
       totalAiTimeMs,
       totalTokens,
       totalCachedTokens,
+      /** 缓存命中 step 数（通过 hitBy.from === "Cache" 检测，命中时 SDK 不调用 AI） */
+      hitByCacheCount,
       modelBreakdown,
     },
     steps,
     passInfo: {
-      detected: passInfo.passCount > 1,
-      passCount: passInfo.passCount,
-      passIds: (passInfo.passIds || []).filter((id: string) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id),
-      ),
+      detected: passInfo.passIds.length > 1,
+      passCount: passInfo.passIds.length,
+      passIds: passInfo.passIds,
     },
   };
 }

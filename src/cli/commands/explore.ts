@@ -183,10 +183,12 @@ export async function runExplore(params: {
           description,
           explorationLog: session.log,
           reportHtmlPath,
+          currentUrl: session.page.url(),
         });
 
         const meta = await saveScript({ name, description, yamlContent });
         logSave(name, meta.yamlPath);
+        log("info", `提示: pnpm dev run ${name} --headful`);
 
         // 收集并保存 metrics（静默失败，不影响主流程）
         try {

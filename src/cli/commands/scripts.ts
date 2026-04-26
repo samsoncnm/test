@@ -3,7 +3,7 @@
  * 脚本管理：list / rm
  */
 
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import pc from "picocolors";
@@ -66,6 +66,38 @@ function getCacheDir(): string {
 
 function getCacheFilePath(name: string): string {
   return join(getCacheDir(), `${name}.cache.yaml`);
+}
+
+export async function listCache(): Promise<void> {
+  const cacheDir = getCacheDir();
+
+  if (!existsSync(cacheDir)) {
+    log("info", "缓存目录不存在，尚无缓存文件");
+    return;
+  }
+
+  const files = readdirSync(cacheDir).filter((f) => f.endsWith(".cache.yaml"));
+
+  if (files.length === 0) {
+    log("info", "缓存目录为空，尚无缓存文件");
+    return;
+  }
+
+  logSection("💾 缓存列表");
+  log("info", `共 ${files.length} 个缓存文件：\n`);
+
+  for (const file of files) {
+    const cacheId = file.replace(".cache.yaml", "");
+    const cachePath = join(cacheDir, file);
+    const stat = statSync(cachePath);
+    const sizeKb = (stat.size / 1024).toFixed(1);
+    const mtime = stat.mtime.toLocaleDateString("zh-CN");
+
+    console.log(`  ${pc.cyan(pc.bold(cacheId))}`);
+    console.log(`    ${pc.dim(`文件: ${file}`)}`);
+    console.log(`    ${pc.dim(`大小: ${sizeKb} KB | 修改: ${mtime}`)}`);
+    console.log();
+  }
 }
 
 export async function cleanCache(name: string): Promise<void> {

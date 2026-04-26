@@ -10,6 +10,7 @@
 
 import { stringify } from "yaml";
 import type { ExplorationLog, YamlFlowItem, YamlScript } from "../types/index.js";
+import { log } from "../utils/logger.js";
 import { parseReportFile } from "../utils/report-parser.js";
 
 /**
@@ -65,6 +66,12 @@ export async function freezeToYaml(params: {
   description: string;
   explorationLog: ExplorationLog;
   reportHtmlPath?: string;
+  /**
+   * save 时刻的当前页面 URL。
+   * 若与 explorationLog.startUrl 不同，说明页面已跳转，
+   * 凝固的 xpath 可能属于跳转后页面，不适用于从 startUrl 开始的 run 模式。
+   */
+  currentUrl?: string;
 }): Promise<string> {
   /**
    * 将 locate 字段规范化为字符串
@@ -212,6 +219,25 @@ export async function freezeToYaml(params: {
         flow.push({ ai: action });
       }
     }
+  }
+
+  // ── B3: URL 跳转检测 ──────────────────────────────────────────────────────
+  // 若凝固时刻的 currentUrl 与 startUrl 不同，说明页面已跳转，
+  // 缓存的 xpath 可能属于跳转后页面，从 startUrl 重新 run 会找不到元素。
+  const startUrl = explorationLog.startUrl;
+  const currentPageUrl = params.currentUrl ?? startUrl;
+  if (currentPageUrl !== startUrl) {
+    log("warn", `⚠️ 页面 URL 已跳转：${startUrl} → ${currentPageUrl}`);
+    log("warn", "   凝固的 xpath 可能属于跳转后页面，从起始页重新 run 会找不到元素！");
+    log("warn", "   建议：先登出或重置到起始页面，再重新 explore 并 save。");
+  }
+
+  // ── A2: ai:/aiAct: 条目警告 ─────────────────────────────────────────────
+  // ai:/aiAct: 会触发 AI 规划推理（慢），建议改为 aiInput/aiTap 等 instant action
+  const hasAiEntry = flow.some((item) => "ai" in item || "aiAct" in item);
+  if (hasAiEntry) {
+    log("warn", "⚠️ flow 中存在 ai:/aiAct: 条目，会触发 AI 规划推理（~50s/次）");
+    log("warn", "   建议改为 aiInput/aiTap 等 instant action 类型以提升执行速度");
   }
 
   const hasDeepLocate = explorationLog.steps.some((s) => s.deepLocate === true);

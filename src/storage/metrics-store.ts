@@ -3,7 +3,7 @@
  * 负责将 MetricsReport 保存到 JSON 文件，并在终端输出彩色摘要
  */
 
-import { promises as fs } from "node:fs";
+import { promises as fs, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import pc from "picocolors";
 import type { MetricsReport } from "../types/index.js";
@@ -40,6 +40,54 @@ export async function saveMetrics(report: MetricsReport): Promise<string> {
 }
 
 /**
+ * 统计 Explore 脚本缓存命中数
+ *
+ * 策略：直接读 midscene_run/cache/{scriptName}.cache.yaml 文件。
+ * - 若 cache 文件存在且包含 locate xpath 数据 → 脚本缓存已激活
+ * - 命中数 = locate 类型缓存条目数（每个 locate prompt 算一个元素）
+ *
+ * 这是最可靠的检测方式，不依赖 execution JSON 的 hitBy 字段（该字段
+ * 在某些 midscene 版本中不总是写入）。
+ */
+function countExploreCacheHits(scriptName: string): number {
+  try {
+    const cacheDir = path.resolve(process.cwd(), "midscene_run", "cache");
+    // Midscene 将空格替换为连字符来存储 cache 文件
+    const sanitizedName = scriptName
+      .normalize("NFC")
+      .replace(/\s+/g, "-")
+      .split("")
+      .filter((c) => {
+        const code = c.charCodeAt(0);
+        return (
+          code >= 32 &&
+          c !== "<" &&
+          c !== ">" &&
+          c !== ":" &&
+          c !== '"' &&
+          c !== "|" &&
+          c !== "?" &&
+          c !== "*"
+        );
+      })
+      .join("");
+    const cacheFileName = `${sanitizedName}.cache.yaml`;
+    const cachePath = path.join(cacheDir, cacheFileName);
+
+    if (!existsSync(cachePath)) {
+      return 0;
+    }
+
+    const content = readFileSync(cachePath, "utf-8");
+    // 统计 locate 类型缓存条目数
+    const locateMatches = content.match(/^\s+-\s+type:\s+locate$/gm);
+    return locateMatches ? locateMatches.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * 在终端打印彩色指标摘要
  */
 export function printMetricsSummary(report: MetricsReport): void {
@@ -66,13 +114,32 @@ export function printMetricsSummary(report: MetricsReport): void {
   console.log(`  墙钟耗时    ${pc.dim(":")} ${wallTimeS}s`);
   console.log(`  AI 推理耗时 ${pc.dim(":")} ${aiTimeS}s`);
   console.log(`  总 Token    ${pc.dim(":")} ${summary.totalTokens.toLocaleString()}`);
-  console.log(`  缓存节省    ${pc.dim(":")} ${summary.totalCachedTokens.toLocaleString()}`);
+
+  // Explore 脚本缓存：直接从 cache 目录读 .cache.yaml 文件
+  const exploreCacheHits = countExploreCacheHits(report.scriptName);
+
+  if (exploreCacheHits > 0) {
+    console.log(
+      pc.green(
+        `  脚本缓存    ${pc.dim(":")} 命中 ${exploreCacheHits} 个元素定位（xpath 复用，跳过 AI 规划）`,
+      ),
+    );
+  }
+
   if (summary.totalCachedTokens > 0) {
     const savings =
       summary.totalTokens > 0
         ? ((summary.totalCachedTokens / summary.totalTokens) * 100).toFixed(1)
         : "0";
-    console.log(pc.green(`  ${pc.dim("→")} 缓存命中！节省 ${savings}% Token，减少 AI 推理耗时`));
+    console.log(
+      pc.green(
+        `  KV 缓存    ${pc.dim(":")} 节省 ${summary.totalCachedTokens.toLocaleString()} Token（命中 ${savings}%）`,
+      ),
+    );
+  }
+
+  if (exploreCacheHits === 0 && summary.totalCachedTokens === 0) {
+    console.log(pc.dim(`  缓存节省    ${pc.dim(":")} 0`));
   }
   console.log();
 
