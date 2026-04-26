@@ -12,6 +12,7 @@ import {
   createExplorationSession,
   executeAndLog,
 } from "../../core/midscene-adapter.js";
+import { generateScriptName } from "../../core/name-generator.js";
 import { freezeToYaml } from "../../core/yaml-freezer.js";
 import { printMetricsSummary, saveMetrics } from "../../storage/metrics-store.js";
 import { saveScript, scriptExists } from "../../storage/script-store.js";
@@ -85,8 +86,12 @@ export async function runExplore(params: {
   maxSteps?: number;
   headless?: boolean;
   deepLocate?: boolean;
+  /** 非交互模式：传入初始指令，跳过交互提示直接执行 */
+  instruction?: string;
+  /** 自动保存：执行完成后自动生成名称并保存脚本 */
+  autoSave?: boolean;
 }): Promise<void> {
-  const { target, maxSteps = 20, deepLocate = false } = params;
+  const { target, maxSteps = 20, deepLocate = false, instruction, autoSave = false } = params;
 
   logSection("🧭 探索模式");
   log("info", `目标: ${target}`);
@@ -127,6 +132,12 @@ export async function runExplore(params: {
 
   try {
     session = await createExplorationSession(url, maxSteps, params.headless ?? true, deepLocate);
+
+    // --- 非交互模式（传入 instruction 时跳过交互循环） ---
+    if (instruction) {
+      await runNonInteractive({ session, instruction, autoSave, url, deepLocate });
+      return;
+    }
 
     logSection("💬 探索会话");
     log("info", "可用命令:");
@@ -251,5 +262,113 @@ export async function runExplore(params: {
     if (session) {
       await cleanup();
     }
+  }
+}
+
+/**
+ * 非交互模式：执行单条指令后自动保存（--auto-save）或退出
+ */
+async function runNonInteractive(ctx: {
+  session: NonNullable<Awaited<ReturnType<typeof createExplorationSession>>>;
+  instruction: string;
+  autoSave: boolean;
+  url: string;
+  deepLocate: boolean;
+}): Promise<void> {
+  const { session, instruction, autoSave, url, deepLocate } = ctx;
+
+  logSection("⚡ 非交互模式");
+  log("info", `目标: ${url}`);
+  log("info", `指令: ${instruction}`);
+  if (deepLocate) {
+    log("info", "深度定位: 启用（deepLocate）");
+  }
+
+  // 注册清理函数
+  async function cleanup(): Promise<void> {
+    await closeSession(session);
+    input.pause();
+  }
+
+  // SIGINT 处理
+  process.on("SIGINT", async () => {
+    log("warn", "收到中断信号，正在清理...");
+    await cleanup();
+    process.exit(130);
+  });
+
+  try {
+    logExplore(instruction);
+    await executeAndLog(session, instruction);
+    log("info", "已执行步骤: 1");
+
+    if (!autoSave) {
+      log("info", "探索完成（无 --auto-save 标志，不保存脚本）");
+      await cleanup();
+      return;
+    }
+
+    // --- 自动保存 ---
+    log("info", "正在生成脚本名称...");
+
+    const generatedName = await generateScriptName(instruction);
+    log("info", `生成的脚本名称: ${generatedName}`);
+
+    // 获取报告文件路径
+    let reportHtmlPath =
+      session.latestReportFile || findLatestReport(session.log.steps.at(-1)?.reportFile);
+    if (reportHtmlPath && !path.isAbsolute(reportHtmlPath)) {
+      reportHtmlPath = path.resolve(process.cwd(), reportHtmlPath);
+    }
+
+    // 等待 .execution.json 写入完成
+    await new Promise((r) => setTimeout(r, 500));
+
+    const yamlContent = await freezeToYaml({
+      name: generatedName,
+      description: instruction,
+      explorationLog: session.log,
+      reportHtmlPath,
+      currentUrl: session.page.url(),
+    });
+
+    const meta = await saveScript({ name: generatedName, description: instruction, yamlContent });
+    logSave(generatedName, meta.yamlPath);
+
+    // metrics 收集（静默失败）
+    try {
+      if (reportHtmlPath) {
+        const executions = parseReportFile(reportHtmlPath);
+        if (executions.length > 0) {
+          const metricsData = parseMetricsFromExecutions({
+            executions,
+            htmlPath: reportHtmlPath,
+            sdkVersion: "1.7.5",
+            startUrl: session.log.startUrl,
+          });
+
+          const metricsReport: MetricsReport = {
+            version: 1,
+            scriptName: generatedName,
+            generatedAt: new Date().toISOString(),
+            mode: "explore",
+            ...metricsData,
+          };
+
+          const metricsPath = await saveMetrics(metricsReport);
+          printMetricsSummary(metricsReport);
+          log("info", `指标报告: ${metricsPath}`);
+        }
+      }
+    } catch {
+      // metrics 收集失败静默跳过
+    }
+
+    log("info", `提示: pnpm dev run ${generatedName} --headful`);
+    await cleanup();
+  } catch (err) {
+    log("error", `探索失败: ${err instanceof Error ? err.message : String(err)}`);
+    await cleanup();
+    throw err;
   }
 }

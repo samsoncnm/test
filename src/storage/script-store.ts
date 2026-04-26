@@ -8,6 +8,7 @@ import { join, resolve } from "node:path";
 import { v4 as uuidv4 } from "uuid";
 import type { ScriptMeta, ScriptsIndex } from "../types/index.js";
 import { log } from "../utils/logger.js";
+import { findByEditDistance, findByPinyin } from "../utils/pinyin-matcher.js";
 
 const SCRIPTS_DIR = resolve(process.cwd(), "scripts", "templates");
 const INDEX_FILE = join(SCRIPTS_DIR, "scripts-index.json");
@@ -115,12 +116,14 @@ export async function scriptExists(name: string): Promise<boolean> {
 
 export interface ScriptSearchResult {
   script: ScriptMeta | null;
-  matchedBy?: "exact" | "prefix" | "fuzzy";
+  matchedBy?: "exact" | "prefix" | "fuzzy" | "pinyin" | "typo";
 }
 
 /**
- * 模糊查找脚本：精确 → 前缀 → 包含
+ * 模糊查找脚本：精确 → 前缀 → 包含 → 拼音匹配 → 编辑距离匹配
  * 单 token 场景（如 "densave"）可以找到 "densave 登录流程"
+ * 拼音选错字（如 "denglu" → "登录"）通过拼音匹配层解决
+ * 手误错字（如 "验正" → "验证"）通过编辑距离层解决
  */
 export async function findScriptByFuzzyName(name: string): Promise<ScriptSearchResult> {
   const scripts = await loadAllScripts();
@@ -136,6 +139,14 @@ export async function findScriptByFuzzyName(name: string): Promise<ScriptSearchR
   // 3. 包含匹配（脚本名中包含输入串）
   const includes = scripts.find((s) => s.name.includes(name));
   if (includes) return { script: includes, matchedBy: "fuzzy" };
+
+  // 4. 拼音匹配层（Tier 2）：解决拼音选错字问题，如 "denglu" → "登录"
+  const pinyinMatch = findByPinyin(name, scripts);
+  if (pinyinMatch) return { script: pinyinMatch.script, matchedBy: "pinyin" };
+
+  // 5. 编辑距离匹配层（Tier 3）：容忍真正的手误错字，如 "验正" → "验证"
+  const typoMatch = findByEditDistance(name, scripts, { maxDistance: 2 });
+  if (typoMatch) return { script: typoMatch.script, matchedBy: "typo" };
 
   return { script: null };
 }

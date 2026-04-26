@@ -30,7 +30,17 @@ export async function runScript(
   const yamlPath = await getScriptPath(result.script.name);
   const actualName = result.script.name;
 
-  if (result.matchedBy !== "exact") {
+  if (result.matchedBy === "pinyin") {
+    log(
+      "warn",
+      `脚本 "${scriptName}" 未找到，已自动纠正为 "${actualName}"（拼音匹配）？继续执行...`,
+    );
+  } else if (result.matchedBy === "typo") {
+    log(
+      "warn",
+      `脚本 "${scriptName}" 未找到，已自动纠正为 "${actualName}"（错别字容忍）？继续执行...`,
+    );
+  } else if (result.matchedBy !== "exact") {
     log("warn", `脚本 "${scriptName}" 未找到，猜测你想运行 "${actualName}"？继续执行...`);
   }
 

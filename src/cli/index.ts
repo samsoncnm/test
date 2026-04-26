@@ -25,16 +25,20 @@ program
   .command("explore")
   .description("启动探索模式，交互式执行自然语言指令")
   .argument("<target>", "目标 URL 或自然语言描述")
+  .argument("[instruction]", "初始执行指令（可选，传递时跳过交互直接执行）")
   .option("--max-steps <number>", "最大探索步数", "20")
   .option("--headful", "使用有头模式（显示浏览器窗口），方便录制和调试")
   .option("--deep-locate", "启用深度定位（deepLocate），适合复杂页面，精确度更高但速度较慢")
-  .action(async (target, options) => {
+  .option("--auto-save", "执行后自动生成脚本名称并保存")
+  .action(async (target, instruction, options) => {
     try {
       await runExplore({
         target,
         maxSteps: Number.parseInt(options.maxSteps, 10),
         headless: !options.headful,
         deepLocate: options.deepLocate ?? false,
+        instruction: instruction ?? undefined,
+        autoSave: options.autoSave ?? false,
       });
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
