@@ -77,26 +77,45 @@ export async function runScript(
   // 创建锁文件
   writeFileSync(lockPath, `${process.pid}`, "utf-8");
 
+  // ── Delta Freeze 预处理器：展开 baseScript 引用 ─────────────────────────
+  const { expandScriptReferences } = await import("../../core/script-expander.js");
+  const loadScriptByName = async (name: string) => {
+    const result = await findScriptByFuzzyName(name);
+    if (!result.script) {
+      throw new Error(`baseScript "${name}" 不存在，请检查脚本名称`);
+    }
+    const path = await getScriptPath(result.script.name);
+    if (!path) throw new Error(`baseScript "${name}" 文件已丢失`);
+    return { content: readFileSync(path, "utf8"), yamlPath: path };
+  };
+
+  const originalYamlContent = readFileSync(absoluteYamlPath, "utf8");
+  const doc = parse(originalYamlContent) as Record<string, unknown>;
+  const yamlDoc = doc as Parameters<typeof expandScriptReferences>[0];
+  const hasBaseScript = (yamlDoc.tasks ?? []).some((t: Record<string, unknown>) => !!t.baseScript);
+
+  if (hasBaseScript) {
+    const expandedDoc = await expandScriptReferences(yamlDoc, undefined, loadScriptByName);
+    writeFileSync(absoluteYamlPath, stringify(expandedDoc));
+  }
+
   const needsInject = options?.headful || options?.keepWindow || options?.noCache;
-  const originalContent = needsInject ? readFileSync(absoluteYamlPath, "utf8") : null;
+  if (needsInject && !hasBaseScript) {
+    if (!doc.agent) doc.agent = {};
+    const agent = doc.agent as Record<string, unknown>;
+    if (options.headful) agent.headed = true;
+    if (options.keepWindow) agent.keepWindow = true;
+    if (options.noCache) agent.cache = false;
+    writeFileSync(absoluteYamlPath, stringify(doc));
+  }
+  // ── 预处理器结束 ─────────────────────────────────────────────────────────
 
   try {
-    if (needsInject && originalContent !== null) {
-      const doc = parse(originalContent) as Record<string, unknown>;
-      if (!doc.agent) doc.agent = {};
-      const agent = doc.agent as Record<string, unknown>;
-      if (options.headful) agent.headed = true;
-      if (options.keepWindow) agent.keepWindow = true;
-      if (options.noCache) agent.cache = false;
-      writeFileSync(absoluteYamlPath, stringify(doc));
-    }
-
     try {
       await runMidscene(projectRoot, absoluteYamlPath, actualName, options);
     } finally {
-      if (needsInject && originalContent !== null) {
-        writeFileSync(absoluteYamlPath, originalContent);
-      }
+      // 恢复原始 YAML：无论 baseScript 展开还是 agent 注入，都恢复原文件
+      writeFileSync(absoluteYamlPath, originalYamlContent);
     }
   } finally {
     // 无论成功还是失败，都要释放锁

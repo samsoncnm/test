@@ -221,5 +221,11 @@ export interface YamlScript {
     name: string;
     continueOnError?: boolean;
     flow: Array<Record<string, unknown>>;
+    /**
+     * 引用的基础脚本名称（Delta Freeze 机制）。
+     * 运行时预处理器会将 baseScript 替换为对应脚本的完整 flow，
+     * 展开后此字段被删除，Midscene 看到的是标准 YAML。
+     */
+    baseScript?: string;
   }>;
 }
