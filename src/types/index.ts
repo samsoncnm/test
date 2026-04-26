@@ -22,8 +22,8 @@ export interface TaskUsage {
  */
 export interface StepMetrics {
   userInstruction: string;
-  /** Plan 任务决定整体状态 */
-  status: "finished" | "failed";
+  /** 执行状态：finished（成功）/ failed（失败）/ skipped（因前置失败未执行）/ cancelled（被取消） */
+  status: "finished" | "failed" | "skipped" | "cancelled";
   /**
    * 墙钟耗时 = Σ(task.end - task.start) of all tasks in this step.
    * Double-pass 时同一个 step 可能执行多遍，累加所有遍的耗时能反映总代价。
@@ -47,6 +47,18 @@ export interface StepMetrics {
   /** 缓存命中标记（通过 task.output.hitBy.from === "Cache" 检测）
    * 命中时 SDK 不调用 AI，故 usage 为空，但 step 仍存在 */
   hitByCache?: boolean;
+  /** 错误类型，如 "ServiceError"（从 task.error.name 提取） */
+  errorType?: string;
+  /** 失败时的错误信息（从 task.errorMessage 提取） */
+  errorMessage?: string;
+  /** 失败时的截图路径（从 task.uiContext.screenshot.path 提取） */
+  failureScreenshot?: string;
+  /** 是否为断言步骤（从 yamlFlow 中的 aiAssert 条目识别） */
+  isAssert?: boolean;
+  /** 完整堆栈（从 task.errorStack 提取，折叠展示） */
+  errorStack?: string;
+  /** 绝对时间戳（Unix ms，从 execution.logTime + timing.start 推导） */
+  absoluteStartTime?: number;
 }
 
 /**
@@ -79,6 +91,14 @@ export interface MetricsReport {
     totalCachedTokens: number;
     /** 缓存命中 step 数（通过 hitBy.from === "Cache" 检测，命中时 SDK 不调用 AI） */
     hitByCacheCount: number;
+    /** 成功步骤数 */
+    passCount: number;
+    /** 失败步骤数 */
+    failCount: number;
+    /** 跳过步骤数（因前置失败未执行） */
+    skipCount: number;
+    /** 断言步骤总数（yamlFlow 中 aiAssert 条目数） */
+    assertCount: number;
     modelBreakdown: Array<{
       modelName: string;
       intent: string;
@@ -134,6 +154,8 @@ export interface YamlFlowItem {
 export interface ParsedExecution {
   /** 执行 ID（UUID），用于分组 */
   executionId: string;
+  /** 执行时间戳（Unix ms），用于推导 absoluteStartTime */
+  executionLogTime?: number;
   /** 执行名称，如 "Act - 在页面上随便说点什么" */
   taskName: string;
   /** 子类型：Plan / Input / Locate */
@@ -170,6 +192,12 @@ export interface ParsedExecution {
     recorder?: Array<{ screenshot?: { path?: string } }>;
     uiContext?: Record<string, unknown>;
     log?: { rawResponse?: string };
+    /** 错误类型（从 task.error.name 提取） */
+    error?: { name?: string };
+    /** 主错误信息（从 task.errorMessage 提取） */
+    errorMessage?: string;
+    /** 完整堆栈（从 task.errorStack 提取） */
+    errorStack?: string;
   };
 }
 
@@ -228,4 +256,43 @@ export interface YamlScript {
      */
     baseScript?: string;
   }>;
+}
+
+/**
+ * 报告主题风格
+ */
+export type ReportTheme = "datadog" | "linear" | "blueprint";
+
+/**
+ * 历史运行记录条目（每个脚本独立索引文件 midscene_run/output/history/{scriptName}.json）
+ */
+export interface HistoryEntry {
+  id: string;
+  scriptName: string;
+  generatedAt: string;
+  mode: "run" | "explore";
+  /** passed = 所有步骤 finished，failed = 至少一个步骤 failed */
+  status: "passed" | "failed";
+  durationMs: number;
+  passCount: number;
+  failCount: number;
+  skipCount: number;
+  assertCount: number;
+  /** 预计算通过率（0-100） */
+  passRate: number;
+  /** 指向 midscene_run/output/metrics/run/*.json */
+  reportPath: string;
+  /** 指向 midscene_run/output/reports/run/*.html（生成后填充） */
+  reportHtmlPath?: string;
+  /** 最近一次失败的错误类型 */
+  errorType?: string;
+}
+
+/**
+ * 历史索引文件格式
+ */
+export interface HistoryIndex {
+  version: 1;
+  scriptName: string;
+  runs: HistoryEntry[];
 }

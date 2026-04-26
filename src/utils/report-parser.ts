@@ -12,11 +12,14 @@ import type { MetricsReport, ParsedExecution, StepMetrics, TaskUsage } from "../
  * 解析 Midscene HTML 报告文件，提取所有 execution 数据
  *
  * @param htmlPath - Midscene HTML 报告文件路径
- * @returns 解析后的 execution 列表
+ * @returns 解析后的 execution 列表及 SDK 版本号
  */
-export function parseReportFile(htmlPath: string): ParsedExecution[] {
+export function parseReportFile(htmlPath: string): {
+  executions: ParsedExecution[];
+  sdkVersion: string;
+} {
   if (!fs.existsSync(htmlPath)) {
-    return [];
+    return { executions: [], sdkVersion: "unknown" };
   }
 
   const outputDir = path.dirname(htmlPath);
@@ -25,10 +28,17 @@ export function parseReportFile(htmlPath: string): ParsedExecution[] {
   const result = splitReportFile({ htmlPath, outputDir });
 
   const executions: ParsedExecution[] = [];
+  let sdkVersion = "unknown";
 
   for (const jsonFile of result.executionJsonFiles) {
     if (!fs.existsSync(jsonFile)) {
       continue;
+    }
+
+    // 只从第一个文件提取 sdkVersion
+    if (sdkVersion === "unknown") {
+      const rawMeta = JSON.parse(fs.readFileSync(jsonFile, "utf-8"));
+      sdkVersion = (rawMeta.sdkVersion as string) ?? "unknown";
     }
 
     const raw = JSON.parse(fs.readFileSync(jsonFile, "utf-8"));
@@ -37,6 +47,7 @@ export function parseReportFile(htmlPath: string): ParsedExecution[] {
     for (const exec of executionList) {
       const taskList = exec.tasks ?? [];
       const execId = exec.id ?? "";
+      const execLogTime = exec.logTime as number | undefined;
 
       for (const task of taskList) {
         const output = task.output ?? {};
@@ -49,6 +60,7 @@ export function parseReportFile(htmlPath: string): ParsedExecution[] {
 
         executions.push({
           executionId: execId,
+          executionLogTime: execLogTime,
           taskName: exec.name ?? "",
           subType: task.subType ?? "",
           userInstruction: param.userInstruction ?? "",
@@ -58,13 +70,27 @@ export function parseReportFile(htmlPath: string): ParsedExecution[] {
           yamlFlow: yamlFlow?.length ? yamlFlow : undefined,
           outputOutput: output.output ?? undefined,
           shouldContinuePlanning: output.shouldContinuePlanning ?? undefined,
-          _rawTask: task as unknown as Record<string, unknown>,
+          _rawTask: {
+            status: task.status,
+            subType: task.subType,
+            param: task.param,
+            timing: task.timing,
+            usage: task.usage,
+            searchAreaUsage: task.searchAreaUsage,
+            output: task.output,
+            recorder: task.recorder,
+            uiContext: task.uiContext,
+            log: task.log,
+            error: task.error,
+            errorMessage: task.errorMessage,
+            errorStack: task.errorStack,
+          } as unknown as Record<string, unknown>,
         });
       }
     }
   }
 
-  return executions;
+  return { executions, sdkVersion };
 }
 
 /**
@@ -234,6 +260,8 @@ export function parseMetricsFromExecutions(params: {
       tasks: NonNullable<ParsedExecution["_rawTask"]>[];
       /** 缓存命中标记（任一 task 有 hitBy.from === "Cache" 即为 true） */
       hitByCache: boolean;
+      /** 绝对时间戳基准（execution.logTime），用于推导 absoluteStartTime */
+      executionLogTime?: number;
     }
   >();
 
@@ -250,6 +278,7 @@ export function parseMetricsFromExecutions(params: {
         userInstruction: inferUserInstruction(rawTask, exec.taskName),
         tasks: [],
         hitByCache: false,
+        executionLogTime: exec.executionLogTime,
       });
     }
     stepMap.get(groupKey)!.tasks.push(rawTask);
@@ -288,8 +317,18 @@ export function parseMetricsFromExecutions(params: {
       return sum;
     }, 0);
 
-    // status = 第一个 task 的 status
-    const status = (task0.status === "finished" ? "finished" : "failed") as "finished" | "failed";
+    // status = 第一个 task 的状态
+    // cancelled 任务（因前置失败被取消）应标记为 skipped，而非 failed
+    const rawStatus = task0.status ?? "";
+    const status = (
+      rawStatus === "finished"
+        ? "finished"
+        : rawStatus === "failed"
+          ? "failed"
+          : rawStatus === "cancelled"
+            ? "skipped"
+            : "failed"
+    ) as "finished" | "failed" | "skipped" | "cancelled";
 
     // usage = 累加所有 task 的 usage
     const usage = aggregateUsage(tasks);
@@ -358,6 +397,11 @@ export function parseMetricsFromExecutions(params: {
       }
     }
 
+    // isAssert = 检查 yamlFlow 中是否存在 aiAssert 条目
+    const isAssert = flatFlow.some((item) =>
+      Object.prototype.hasOwnProperty.call(item, "aiAssert"),
+    );
+
     // screenshots = 从每个 task 的 uiContext.screenshot.path 和 recorder[].screenshot.path 提取（去重）
     const screenshotSet = new Set<string>();
     const screenshots: string[] = [];
@@ -381,6 +425,13 @@ export function parseMetricsFromExecutions(params: {
       }
     }
 
+    // absoluteStartTime = execution.logTime + timing.start
+    const task0TimingStart = tasks[0]?.timing?.start;
+    const absoluteStartTime =
+      group.executionLogTime !== undefined && task0TimingStart !== undefined
+        ? group.executionLogTime + task0TimingStart
+        : undefined;
+
     steps.push({
       userInstruction: group.userInstruction,
       status,
@@ -392,6 +443,30 @@ export function parseMetricsFromExecutions(params: {
       actions: actions.length > 0 ? actions : undefined,
       screenshots: screenshots.length > 0 ? screenshots : undefined,
       hitByCache: group.hitByCache,
+      isAssert: isAssert || undefined,
+      absoluteStartTime,
+      ...(status === "failed"
+        ? (() => {
+            const lastTask = tasks[tasks.length - 1]!;
+            const errName = (lastTask as Record<string, unknown>).error as
+              | Record<string, unknown>
+              | undefined;
+            const errType = (errName?.name as string) ?? undefined;
+            const errMsg = (lastTask as Record<string, unknown>).errorMessage as string | undefined;
+            const errStack = (lastTask as Record<string, unknown>).errorStack as string | undefined;
+            const lastUiCtx = (lastTask as Record<string, unknown>).uiContext as
+              | Record<string, unknown>
+              | undefined;
+            const ss = lastUiCtx?.screenshot as Record<string, unknown> | undefined;
+            const failSs = (ss?.path as string) ?? undefined;
+            return {
+              ...(errType ? { errorType: errType } : {}),
+              ...(errMsg ? { errorMessage: errMsg } : {}),
+              ...(failSs ? { failureScreenshot: failSs } : {}),
+              ...(errStack ? { errorStack: errStack } : {}),
+            };
+          })()
+        : {}),
     });
   }
 
@@ -405,11 +480,19 @@ export function parseMetricsFromExecutions(params: {
   let totalTokens = 0;
   let totalCachedTokens = 0;
   let hitByCacheCount = 0;
+  let passCount = 0;
+  let failCount = 0;
+  let skipCount = 0;
+  let assertCount = 0;
   const modelMap = new Map<string, { tokens: number; aiTime: number }>();
 
   for (const step of steps) {
     totalAiTimeMs += step.aiTimeMs;
     if (step.hitByCache) hitByCacheCount++;
+    if (step.status === "finished") passCount++;
+    else if (step.status === "failed") failCount++;
+    else if (step.status === "skipped" || step.status === "cancelled") skipCount++;
+    if (step.isAssert) assertCount++;
     if (step.usage) {
       totalTokens += step.usage.totalTokens;
       totalCachedTokens += step.usage.cachedTokens;
@@ -462,6 +545,10 @@ export function parseMetricsFromExecutions(params: {
       totalCachedTokens,
       /** 缓存命中 step 数（通过 hitBy.from === "Cache" 检测，命中时 SDK 不调用 AI） */
       hitByCacheCount,
+      passCount,
+      failCount,
+      skipCount,
+      assertCount,
       modelBreakdown,
     },
     steps,

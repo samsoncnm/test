@@ -10,12 +10,14 @@ import { parse, stringify } from "yaml";
 import { printMetricsSummary, saveMetrics } from "../../storage/metrics-store.js";
 import { findScriptByFuzzyName, getScriptPath } from "../../storage/script-store.js";
 import type { MetricsReport } from "../../types/index.js";
+import { append, entryFromReport, prune } from "../../utils/history-store.js";
 import { log } from "../../utils/logger.js";
 import {
   parseMetricsFromExecutions,
   parseReportFile,
   waitForExecutionJson,
 } from "../../utils/report-parser.js";
+import { renderReport } from "../../utils/report-renderer.js";
 
 export async function runScript(
   scriptName: string,
@@ -91,7 +93,7 @@ export async function runScript(
 
   const originalYamlContent = readFileSync(absoluteYamlPath, "utf8");
   const doc = parse(originalYamlContent) as Record<string, unknown>;
-  const yamlDoc = doc as Parameters<typeof expandScriptReferences>[0];
+  const yamlDoc = doc as unknown as Parameters<typeof expandScriptReferences>[0];
   const hasBaseScript = (yamlDoc.tasks ?? []).some((t: Record<string, unknown>) => !!t.baseScript);
 
   if (hasBaseScript) {
@@ -193,13 +195,14 @@ async function runMidscene(
         if (existsSync(htmlPath)) {
           await waitForExecutionJson(reportDir, htmlFileName, 3000);
 
-          const executions = parseReportFile(htmlPath);
+          const { executions, sdkVersion } = parseReportFile(htmlPath);
           if (executions.length > 0) {
             const metricsData = parseMetricsFromExecutions({
               executions,
               htmlPath,
               scriptStartTime,
               scriptEndTime,
+              sdkVersion,
             });
 
             const metricsReport: MetricsReport = {
@@ -211,8 +214,20 @@ async function runMidscene(
             };
 
             const metricsPath = await saveMetrics(metricsReport);
-            printMetricsSummary(metricsReport);
+            printMetricsSummary(metricsReport, { reportDir });
             log("info", `指标报告: ${metricsPath}`);
+
+            // 生成 HTML 报告并追加历史记录
+            try {
+              const entry = entryFromReport(metricsReport, metricsPath);
+              const htmlPath = renderReport(metricsReport);
+              entry.reportHtmlPath = htmlPath;
+              append(entry);
+              prune(metricsReport.scriptName, 50);
+              log("info", `HTML 报告: ${htmlPath}`);
+            } catch (e) {
+              log("warn", `HTML 报告生成失败: ${(e as Error).message}`);
+            }
           }
         }
       } catch (e) {

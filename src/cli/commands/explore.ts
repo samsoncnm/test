@@ -207,12 +207,12 @@ export async function runExplore(params: {
             // 等待 500ms 确保 .execution.json 写入完成
             await new Promise((r) => setTimeout(r, 500));
 
-            const executions = parseReportFile(reportHtmlPath);
+            const { executions, sdkVersion: realSdkVersion } = parseReportFile(reportHtmlPath);
             if (executions.length > 0) {
               const metricsData = parseMetricsFromExecutions({
                 executions,
                 htmlPath: reportHtmlPath,
-                sdkVersion: "1.7.5",
+                sdkVersion: realSdkVersion,
                 startUrl: session?.log.startUrl,
               });
 
@@ -338,12 +338,13 @@ async function runNonInteractive(ctx: {
     // metrics 收集（静默失败）
     try {
       if (reportHtmlPath) {
-        const executions = parseReportFile(reportHtmlPath);
-        if (executions.length > 0) {
+        const { executions: freezeExecutions, sdkVersion: freezeSdkVersion } =
+          parseReportFile(reportHtmlPath);
+        if (freezeExecutions.length > 0) {
           const metricsData = parseMetricsFromExecutions({
-            executions,
+            executions: freezeExecutions,
             htmlPath: reportHtmlPath,
-            sdkVersion: "1.7.5",
+            sdkVersion: freezeSdkVersion,
             startUrl: session.log.startUrl,
           });
 

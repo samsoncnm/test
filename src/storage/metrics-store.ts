@@ -89,8 +89,10 @@ function countExploreCacheHits(scriptName: string): number {
 
 /**
  * 在终端打印彩色指标摘要
+ * @param report MetricsReport 实例
+ * @param opts.reportDir 报告目录（用于拼接截图相对路径为绝对路径）
  */
-export function printMetricsSummary(report: MetricsReport): void {
+export function printMetricsSummary(report: MetricsReport, opts?: { reportDir?: string }): void {
   const { summary } = report;
   const wallTimeS = (summary.totalWallTimeMs / 1000).toFixed(1);
   const aiTimeS = (summary.totalAiTimeMs / 1000).toFixed(1);
@@ -179,6 +181,36 @@ export function printMetricsSummary(report: MetricsReport): void {
     console.log(`    ${pc.dim("截图路径和完整动作详见 JSON 报告")}`);
     console.log();
   }
+
+  // ── 失败报告块（MVP 新增）────────────────────────────────────────────────
+  const failedSteps = report.steps.filter((s) => s.status === "failed");
+  if (failedSteps.length > 0) {
+    console.log();
+    console.log(pc.bold(pc.red("✗ 执行失败")));
+    console.log();
+    for (const step of failedSteps) {
+      console.log(pc.red(`  ✗ 步骤: ${step.userInstruction}`));
+      if (step.errorType) {
+        console.log(pc.dim("    类型: ") + pc.red(step.errorType));
+      }
+      if (step.errorMessage) {
+        const msg =
+          step.errorMessage.length > 200
+            ? `${step.errorMessage.slice(0, 200)}...`
+            : step.errorMessage;
+        console.log(pc.dim("    原因: ") + pc.red(msg));
+      }
+      if (step.failureScreenshot) {
+        const baseDir = opts?.reportDir ? path.resolve(opts.reportDir) : process.cwd();
+        const absPath = path.resolve(baseDir, step.failureScreenshot);
+        console.log(pc.dim("    截图: ") + absPath);
+      }
+      console.log();
+    }
+    console.log(pc.dim("  完整错误信息和堆栈详见 JSON 报告"));
+    console.log();
+  }
+  // ── 失败报告块结束 ─────────────────────────────────────────────────────
 
   log("info", "指标报告已保存");
 }

@@ -5,8 +5,10 @@
 
 import { Command } from "commander";
 import pc from "picocolors";
+import type { ReportTheme } from "../types/index.js";
 import { logSection } from "../utils/logger.js";
 import { runExplore } from "./commands/explore.js";
+import { renderReportCommand } from "./commands/report.js";
 import { runScript } from "./commands/run.js";
 import {
   cleanCache,
@@ -61,6 +63,23 @@ program
         keepWindow: options.keepWindow,
         noCache: options.noCache,
       });
+    } catch (err) {
+      console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+// report 子命令
+program
+  .command("report")
+  .description("渲染 HTML 报告（从已保存的 metrics JSON）")
+  .argument("<script-name>", "脚本名称")
+  .option("--theme <theme>", "报告主题风格 (datadog|linear|blueprint)", "datadog")
+  .option("--open", "生成后自动在浏览器中打开")
+  .action(async (scriptName, options) => {
+    try {
+      const theme = options.theme as ReportTheme | undefined;
+      await renderReportCommand(scriptName, { theme, open: options.open });
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);

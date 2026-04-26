@@ -118,7 +118,7 @@ export async function freezeToYaml(params: {
 
   // 优先从报告 JSON 解析 yamlFlow
   if (reportHtmlPath) {
-    const executions = parseReportFile(reportHtmlPath);
+    const { executions } = parseReportFile(reportHtmlPath);
 
     // 1. 扁平化所有 Plan task 的 yamlFlow 为一个完整序列，同时记录来自哪个 exec
     // 以及 Plan task 的 log（自然语言动作描述，用于 aiInput 无 locate 时的 fallback）
