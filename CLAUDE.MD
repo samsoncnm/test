@@ -18,13 +18,13 @@
    - Python 代码：用 **ruff**（`ruff check .`）
    - 两者均要求零错误（warnings 允许，errors 必须清零）
 6. **强制 pre-commit review**：每次 `git commit` 前必须通过自动化 code review。
-   - 触发方式：`.git/hooks/pre-commit` 已在仓库安装，commit 时自动执行
+   - 触发方式：`.git/hooks/pre-commit` 已在本地仓库安装，commit 时自动执行（注意：该文件属于本地 hook，不会被 git 提交；团队成员需自行将 `scripts/pre-commit-review.sh` 纳入版本控制）
    - 审查脚本：`scripts/pre-commit-review.sh`
    - 审查维度：正确性 / 安全性 / 性能 / 可维护性 / 项目一致性（5个维度，详见 `.cursor/skills/code-review/SKILL.md`）
-   - **必须修复的问题（阻塞提交）**：硬编码凭证/Token/API Key、危险函数（`eval()` / `new Function()` / `innerHTML` / `document.write()`）、空 `catch {}`、SQL 注入风险
+   - **必须修复的问题（阻塞提交）**：硬编码凭证/Token/API Key、危险函数（`eval()` / `new Function()` / `innerHTML` / `document.write()`）、空 `catch {}`、TypeScript Lint 报错（Biome errors）
    - 建议修改 / 可以更好：不阻塞提交，但会在 hook 输出中显示
    - **跳过审查**（仅限紧急 hotfix）：`SKIP_REVIEW=1 git commit -m "..."`
-   - 适用豁免：初始空 commit / revert commit / 没有 staged 变更时自动跳过
+   - 适用豁免：初始空 commit / revert commit / 没有 staged 变更时自动跳过 / WIP 提交自动跳过
 7. **禁止自动推送**：所有 `git push` 必须等待用户显式命令再执行，不得在自动流程中推送。
 8. **反复问题聚焦原则**：当遇到反复改都改不好的问题时，必须严格聚焦当前问题，准确找到根因后再修复，不要猜测。可使用 `/autoresearch` 技能进行系统性迭代，或开 agents team 进行多角度对抗性分析。困惑时停下来，指出不清楚之处，要求澄清再行动。
 9. **强制最小可行方案优先（MVP-First）**：任何需求实施必须严格遵循以下流程：
