@@ -189,54 +189,59 @@ async function runMidscene(
         log("warn", `脚本执行失败，退出码: ${code}，仍尝试解析已有报告`);
       }
 
-      // metrics 解析：无论成功还是失败都执行
-      // Midscene HTML 报告在首个任务失败时仍会写入已完成的数据
-      try {
-        const htmlFileName = `${actualName}.html`;
-        const reportDir = join(projectRoot, "midscene_run", "report");
-        const htmlPath = join(reportDir, htmlFileName);
+      // P1 性能优化：将报告解析延迟到 setImmediate，让 Midscene 有更多时间完成后台清理。
+      // 根因：Midscene CLI 退出后，splitReportFile() 内部仍有大量同步工作（文件 I/O、浏览器资源清理等），
+      // 直接在 close 回调中执行会与 CLI 进程退出竞争，导致 report 文件不稳定。
+      // setImmediate 将其推入事件循环下一阶段，让进程先完成退出清理。
+      setImmediate(async () => {
+        try {
+          const htmlFileName = `${actualName}.html`;
+          const reportDir = join(projectRoot, "midscene_run", "report");
+          const htmlPath = join(reportDir, htmlFileName);
 
-        if (existsSync(htmlPath)) {
-          await waitForExecutionJson(reportDir, htmlFileName, 3000);
+          if (existsSync(htmlPath)) {
+            // 等待时间从 3000ms 增加到 10000ms，给予 Midscene 更多时间完成 HTML 报告写入
+            await waitForExecutionJson(reportDir, htmlFileName, 10000);
 
-          // 从 YAML 源文件解析 flow 条目信息（用于修复 isAssert 推导不准确的问题）
-          const { executions, sdkVersion } = parseReportFile(htmlPath, { scriptStartTime });
-          if (executions.length > 0) {
-            const metricsData = parseMetricsFromExecutions({
-              executions,
-              scriptStartTime,
-              scriptEndTime,
-              sdkVersion,
-            });
+            // 从 YAML 源文件解析 flow 条目信息（用于修复 isAssert 推导不准确的问题）
+            const { executions, sdkVersion } = parseReportFile(htmlPath, { scriptStartTime });
+            if (executions.length > 0) {
+              const metricsData = parseMetricsFromExecutions({
+                executions,
+                scriptStartTime,
+                scriptEndTime,
+                sdkVersion,
+              });
 
-            const metricsReport: MetricsReport = {
-              version: 1,
-              scriptName: actualName,
-              generatedAt: new Date().toISOString(),
-              mode: "run",
-              ...metricsData,
-            };
+              const metricsReport: MetricsReport = {
+                version: 1,
+                scriptName: actualName,
+                generatedAt: new Date().toISOString(),
+                mode: "run",
+                ...metricsData,
+              };
 
-            const metricsPath = await saveMetrics(metricsReport);
-            printMetricsSummary(metricsReport, { reportDir });
-            log("info", `指标报告: ${metricsPath}`);
+              const metricsPath = await saveMetrics(metricsReport);
+              printMetricsSummary(metricsReport, { reportDir });
+              log("info", `指标报告: ${metricsPath}`);
 
-            // 生成 HTML 报告并追加历史记录
-            try {
-              const entry = entryFromReport(metricsReport, metricsPath);
-              const htmlPath = renderReport(metricsReport);
-              entry.reportHtmlPath = htmlPath;
-              append(entry);
-              prune(metricsReport.scriptName, 50);
-              log("info", `HTML 报告: ${htmlPath}`);
-            } catch (e) {
-              log("warn", `HTML 报告生成失败: ${(e as Error).message}`);
+              // 生成 HTML 报告并追加历史记录
+              try {
+                const entry = entryFromReport(metricsReport, metricsPath);
+                const htmlPath = renderReport(metricsReport);
+                entry.reportHtmlPath = htmlPath;
+                append(entry);
+                prune(metricsReport.scriptName, 50);
+                log("info", `HTML 报告: ${htmlPath}`);
+              } catch (e) {
+                log("warn", `HTML 报告生成失败: ${(e as Error).message}`);
+              }
             }
           }
+        } catch (e) {
+          log("warn", `指标收集失败: ${(e as Error).message}`);
         }
-      } catch (e) {
-        log("warn", `指标收集失败: ${(e as Error).message}`);
-      }
+      });
 
       if (code === 0) {
         resolve();
