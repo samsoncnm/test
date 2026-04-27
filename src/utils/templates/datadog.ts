@@ -43,8 +43,7 @@ function formatDate(iso: string): string {
       second: "2-digit",
       hour12: false,
     });
-  }
-  catch {
+  } catch {
     return iso;
   }
 }
@@ -68,8 +67,7 @@ function renderStepRow(
         : "row-hover";
   const idxClass =
     step.status === "failed" ? "text-red-400 font-semibold" : "text-[var(--text-muted)]";
-  const instrClass =
-    step.status === "failed" ? "font-medium text-red-200" : "text-sm";
+  const instrClass = step.status === "failed" ? "font-medium text-red-200" : "text-sm";
   const timeClass = step.status === "failed" ? "text-red-300" : "";
   const chevron = isExpanded
     ? `<i data-lucide="chevron-down" class="w-4 h-4 ${step.status === "failed" ? "text-red-400" : "text-[var(--text-muted)]"}"></i>`
@@ -244,8 +242,10 @@ function renderHistoryTrend(history: HistoryEntry[]): string {
     .map((h, i) => {
       const barH = Math.max(4, h.passRate * barScale);
       const isCurrent = i === history.slice(0, 10).reverse().length - 1;
-      const color = h.status === "failed" ? "bg-[var(--status-fail)]/80" : "bg-[var(--status-pass)]/80";
-      const rateColor = h.status === "failed" ? "text-[var(--status-fail)]" : "text-[var(--status-pass)]";
+      const color =
+        h.status === "failed" ? "bg-[var(--status-fail)]/80" : "bg-[var(--status-pass)]/80";
+      const rateColor =
+        h.status === "failed" ? "text-[var(--status-fail)]" : "text-[var(--status-pass)]";
       const currentMark = isCurrent
         ? `<div class="absolute -top-1 -right-1 w-2 h-2 bg-[var(--brand)] rounded-full"></div>`
         : "";
@@ -274,8 +274,9 @@ function renderHistoryTrend(history: HistoryEntry[]): string {
       </div>
       <div class="mt-4 pt-4 border-t border-[var(--border)] flex items-center justify-between text-xs text-[var(--text-muted)]">
         <div class="flex items-center gap-4">
-          <span>平均通过率: <span class="text-[var(--status-pass)] mono font-medium">${avgPassRate}%</span></span>
-          <span>平均耗时: <span class="mono font-medium">${avgDuration}s</span></span>
+          <span>历史平均通过率: <span class="text-[var(--status-pass)] mono font-medium">${avgPassRate}%</span></span>
+          <span>历史平均耗时: <span class="mono font-medium">${avgDuration}s</span></span>
+          <span class="text-[8px] text-[var(--text-muted)]">(不含本次)</span>
         </div>
       </div>
     </div>`;
@@ -298,8 +299,10 @@ function renderTokenBreakdown(report: MetricsReport): string {
             const pct = totalTokens > 0 ? ((s.usage?.totalTokens ?? 0) / totalTokens) * 100 : 0;
             let color = "bg-blue-500/70";
             if (s.status === "failed") color = "bg-[var(--status-fail)]/80";
-            else if (s.status === "skipped" || s.status === "cancelled") color = "bg-[var(--status-skip-bg)]";
-            return `<div class="${color} h-full" style="width: ${pct.toFixed(1)}%;" title="第 ${steps.indexOf(s) + 1} 步: ${s.usage?.totalTokens ?? 0} Token"></div>`;
+            else if (s.status === "skipped" || s.status === "cancelled")
+              color = "bg-[var(--status-skip-bg)]";
+            const barWidth = pct > 0 ? `${pct.toFixed(1)}%` : "2%";
+            return `<div class="${color} h-full" style="width: ${barWidth};" title="第 ${steps.indexOf(s) + 1} 步: ${s.usage?.totalTokens ?? 0} Token"></div>`;
           })
           .join("")
       : "";
@@ -328,7 +331,9 @@ function renderTokenBreakdown(report: MetricsReport): string {
           <div class="text-xs text-[var(--text-muted)] mt-1">${summary.modelBreakdown[0]?.intent ?? ""}</div>
         </div>
       </div>
-      ${tokenBars ? `
+      ${
+        tokenBars
+          ? `
       <div class="mt-4">
         <div class="flex items-center gap-2 mb-2">
           <span class="text-xs text-[var(--text-muted)]">各步骤 Token 分布</span>
@@ -344,7 +349,9 @@ function renderTokenBreakdown(report: MetricsReport): string {
           <span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-[var(--status-fail)]/80"></span> 失败</span>
           <span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-[var(--status-skip-bg)]"></span> 跳过</span>
         </div>
-      </div>` : ""}
+      </div>`
+          : ""
+      }
     </div>`;
 }
 
@@ -423,7 +430,7 @@ function renderMetricsBar(report: MetricsReport): string {
             <span class="mono font-semibold text-lg text-[var(--text-primary)]">${summary.totalSteps}</span>
           </div>
           <div class="h-4 w-px bg-[var(--border)] mx-1"></div>
-          <span class="text-[var(--status-pass)] mono font-semibold">${summary.passCount}</span>
+          <span class="text-[var(--status-pass)] mono font-semibold">${summary.finishedSteps}</span>
           <span class="text-[var(--status-fail)] mono font-semibold">${summary.failCount}</span>
           <span class="text-[var(--status-skip)] mono font-semibold">${summary.skipCount}</span>
         </div>
@@ -437,11 +444,7 @@ function renderMetricsBar(report: MetricsReport): string {
             <i data-lucide="clock" class="w-4 h-4 text-[var(--brand)]"></i>
             <span class="text-[var(--text-secondary)] text-xs">耗时:</span>
             <span class="mono font-medium text-sm">${duration}s</span>
-          </div>
-          <div class="flex items-center gap-1.5">
-            <i data-lucide="cpu" class="w-4 h-4 text-[var(--brand)]"></i>
-            <span class="text-[var(--text-secondary)] text-xs">AI:</span>
-            <span class="mono font-medium text-sm">${aiTime}s</span>
+            <span class="text-[var(--text-muted)] text-[10px]">AI: ${aiTime}s</span>
           </div>
           <div class="flex items-center gap-1.5">
             <i data-lucide="coins" class="w-4 h-4 text-[var(--brand)]"></i>
@@ -512,10 +515,7 @@ function renderStepsTable(report: MetricsReport): string {
 
 // ── 主渲染函数 ────────────────────────────────────────────────────────────────
 
-export function renderDatadogReport(
-  report: MetricsReport,
-  history: HistoryEntry[],
-): string {
+export function renderDatadogReport(report: MetricsReport, history: HistoryEntry[]): string {
   const alertPanel = report.summary.failCount > 0 ? renderAlertPanel(report) : "";
 
   return `<!DOCTYPE html>

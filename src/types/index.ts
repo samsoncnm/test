@@ -24,10 +24,7 @@ export interface StepMetrics {
   userInstruction: string;
   /** 执行状态：finished（成功）/ failed（失败）/ skipped（因前置失败未执行）/ cancelled（被取消） */
   status: "finished" | "failed" | "skipped" | "cancelled";
-  /**
-   * 墙钟耗时 = Σ(task.end - task.start) of all tasks in this step.
-   * Double-pass 时同一个 step 可能执行多遍，累加所有遍的耗时能反映总代价。
-   */
+  /** 墙钟耗时 = Σ(task.end - task.start) of all tasks in this step */
   wallTimeMs: number;
   /** AI 推理耗时 = Σ timing.cost（Plan / Locate / Assert 任务累加） */
   aiTimeMs: number;
@@ -69,13 +66,6 @@ export interface MetricsReport {
   scriptName: string;
   generatedAt: string;
   mode: "explore" | "run";
-  /** 标识 SDK 是否发生了 double-pass（同一 YAML 执行了多遍） */
-  passInfo?: {
-    detected: boolean;
-    passCount: number;
-    /** 各 pass 的 group-id（HTML 中的 data-group-id） */
-    passIds: string[];
-  };
   environment: {
     sdkVersion: string;
     startUrl?: string;
@@ -92,7 +82,7 @@ export interface MetricsReport {
     /** 缓存命中 step 数（通过 hitBy.from === "Cache" 检测，命中时 SDK 不调用 AI） */
     hitByCacheCount: number;
     /** 成功步骤数 */
-    passCount: number;
+    finishedSteps: number;
     /** 失败步骤数 */
     failCount: number;
     /** 跳过步骤数（因前置失败未执行） */
@@ -274,7 +264,8 @@ export interface HistoryEntry {
   /** passed = 所有步骤 finished，failed = 至少一个步骤 failed */
   status: "passed" | "failed";
   durationMs: number;
-  passCount: number;
+  /** 成功步骤数 */
+  finishedSteps: number;
   failCount: number;
   skipCount: number;
   assertCount: number;

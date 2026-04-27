@@ -116,10 +116,9 @@ export async function waitForExecutionJson(
   }
 }
 
-/** 归一化 exec.name，提取动作类型和描述，用于去重
- * Midscene 的 splitReportFile 对 double-pass 中同一 flow item 生成不同 execution.id（UUID），
- * 但 exec.name 相同（如 "Input - 账号/手机号输入框"）。按归一化后的 name 分组即可合并 double-pass 重复。
- * 源码证据：node_modules/@midscene/core/dist/es/report.mjs L181-211 collectDedupedExecutions
+/** 按 Midscene 执行阶段归一化分组（同 phase 的重复 execution 合并）
+ * 用于将 Midscene 报告中的多个 execution 条目按阶段归组，
+ * 生成我们自己的 step 视图。
  */
 function normalizeExecName(name: string): string {
   return (name || "")
@@ -218,41 +217,17 @@ function aggregateUsage(tasks: NonNullable<ParsedExecution["_rawTask"]>[]): Task
 }
 
 /**
- * 从 HTML 中检测有多少个不同的 data-group-id（即 SDK 执行了多少遍）
- */
-export function detectPassInfo(htmlPath: string): { passIds: string[]; passCount: number } {
-  try {
-    const html = fs.readFileSync(htmlPath, "utf-8");
-    const matches = [...html.matchAll(/data-group-id="([^"]+)"/g)];
-    const passIds = [...new Set(matches.map((m) => m[1]!).filter(Boolean))];
-    return { passIds, passCount: passIds.length };
-  } catch {
-    return { passIds: [], passCount: 0 };
-  }
-}
-
-/**
  * 从 .execution.json 数据中提取 metrics
- * 分组逻辑：按 exec.name 归一化分组（合并 double-pass 重复）
- * 源码证据：node_modules/@midscene/core/dist/es/report.mjs L181-211
- * — collectDedupedExecutions 仅对相同 execution.id 去重，double-pass 中同一
- *   flow item 产生不同 UUID 全部保留，因此按 exec.name 归一化分组可自动去重。
+ * 分组逻辑：按 exec.name 归一化分组（同阶段重复执行合并）
  */
 export function parseMetricsFromExecutions(params: {
   executions: ParsedExecution[];
   sdkVersion?: string;
   startUrl?: string;
-  htmlPath?: string;
-  /**
-   * 可选：脚本进程启动时间（Date.now()），用于计算更准确的脚本总墙钟耗时。
-   */
   scriptStartTime?: number;
-  /**
-   * 可选：脚本进程结束时间（Date.now()）。若只传 scriptStartTime，则用 Date.now() 作为 end。
-   */
   scriptEndTime?: number;
-}): Pick<MetricsReport, "environment" | "summary" | "steps" | "passInfo"> {
-  // 按 exec.name 归一化分组（合并 double-pass 重复）
+}): Pick<MetricsReport, "environment" | "summary" | "steps"> {
+  // 按 exec.name 归一化分组（同阶段重复执行合并）
   const stepMap = new Map<
     string,
     {
@@ -300,7 +275,7 @@ export function parseMetricsFromExecutions(params: {
     const task0 = tasks[0]!;
 
     // wallTimeMs = sum of each task's actual duration (task.end - task.start)
-    // Previously used lastEnd - firstStart which spans across all double-pass executions,
+    // Previously used lastEnd - firstStart which spans across all executions,
     // giving inflated times like ~4100s per step instead of the real ~5s
     const wallTimeMs = tasks.reduce((sum, t) => {
       const start = t.timing?.start ?? 0;
@@ -471,8 +446,9 @@ export function parseMetricsFromExecutions(params: {
   }
 
   // 汇总
-  // 若调用方传入了 scriptStartTime（run.ts），用进程级别墙钟时间；
-  // 否则回退到 Σ step.aiTimeMs（适合 explore 模式，无 double-pass 问题）。
+  // 进程级别墙钟时间 = scriptEndTime - scriptStartTime
+  // 包括：Midscene CLI 启动 + SDK 执行 + 报告解析
+  // 注意：这不是 SDK 的 summary.duration（纯引擎执行时间），而是整个 Node 进程的生命周期
   const totalWallTimeMs = params.scriptStartTime
     ? (params.scriptEndTime ?? Date.now()) - params.scriptStartTime
     : steps.reduce((sum, s) => sum + s.aiTimeMs, 0);
@@ -512,25 +488,11 @@ export function parseMetricsFromExecutions(params: {
     return {
       modelName,
       intent,
-      steps: 0,
+      steps: steps.length,
       totalTokens: val.tokens,
       totalAiTimeMs: val.aiTime,
     };
   });
-
-  for (const step of steps) {
-    if (step.usage) {
-      const entry = modelBreakdown.find(
-        (e) => e.modelName === step.usage!.modelName && e.intent === step.usage!.intent,
-      );
-      if (entry) entry.steps++;
-    }
-  }
-
-  // 检测 double-pass
-  const passInfo = params.htmlPath
-    ? detectPassInfo(params.htmlPath)
-    : { passIds: [], passCount: 0 };
 
   return {
     environment: {
@@ -545,18 +507,13 @@ export function parseMetricsFromExecutions(params: {
       totalCachedTokens,
       /** 缓存命中 step 数（通过 hitBy.from === "Cache" 检测，命中时 SDK 不调用 AI） */
       hitByCacheCount,
-      passCount,
+      finishedSteps: passCount,
       failCount,
       skipCount,
       assertCount,
       modelBreakdown,
     },
     steps,
-    passInfo: {
-      detected: passInfo.passIds.length > 1,
-      passCount: passInfo.passIds.length,
-      passIds: passInfo.passIds,
-    },
   };
 }
 

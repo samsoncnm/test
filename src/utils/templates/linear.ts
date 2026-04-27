@@ -141,7 +141,7 @@ function renderStepItem(step: StepMetrics, idx: number): string {
 export function renderLinearReport(report: MetricsReport, history: HistoryEntry[]): string {
   const { summary } = report;
   const passRate =
-    summary.totalSteps > 0 ? Math.round((summary.passCount / summary.totalSteps) * 100) : 0;
+    summary.totalSteps > 0 ? Math.round((summary.finishedSteps / summary.totalSteps) * 100) : 0;
   const statusBadge =
     summary.failCount > 0
       ? `<span class="px-3 py-1 bg-[var(--status-fail-bg)] text-[var(--status-fail)] text-xs font-medium rounded-full">失败</span>`
@@ -178,7 +178,7 @@ export function renderLinearReport(report: MetricsReport, history: HistoryEntry[
                 ${isCurrent ? `<span class="px-2 py-0.5 ${h.status === "failed" ? "bg-[var(--status-fail-bg)] text-[var(--status-fail)]" : "bg-[var(--status-pass-bg)] text-[var(--status-pass)]"} text-xs rounded font-medium">${label}</span>` : ""}
               </div>
               <div class="flex items-center gap-2 mb-3">${icon}<span class="text-xl font-semibold ${h.status === "failed" ? "text-[var(--status-fail)]" : "text-[var(--status-pass)]"}">${h.status === "failed" ? "失败" : "通过"}</span></div>
-              <div class="text-xs text-[var(--text-muted)]"><div>${h.passCount}/${h.passCount + h.failCount + h.skipCount} 通过</div></div>
+              <div class="text-xs text-[var(--text-muted)]"><div>${h.finishedSteps}/${h.finishedSteps + h.failCount + h.skipCount} 通过</div></div>
             </div>`;
           })
           .join("")
@@ -309,7 +309,7 @@ export function renderLinearReport(report: MetricsReport, history: HistoryEntry[
               <i data-lucide="percent" class="w-4 h-4 text-[#6b7280]"></i>
             </div>
             <div class="text-3xl font-bold text-[#f7c948]">${passRate}%</div>
-            <div class="text-xs text-[#6b7280] mt-1">${summary.passCount} / ${summary.totalSteps} 步骤通过</div>
+            <div class="text-xs text-[#6b7280] mt-1">${summary.finishedSteps} / ${summary.totalSteps} 步骤通过</div>
           </div>
           <div class="bg-[#18181b] rounded-xl p-5 border border-[#27272a]">
             <div class="flex items-center justify-between mb-3">

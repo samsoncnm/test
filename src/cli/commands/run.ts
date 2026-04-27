@@ -199,7 +199,6 @@ async function runMidscene(
           if (executions.length > 0) {
             const metricsData = parseMetricsFromExecutions({
               executions,
-              htmlPath,
               scriptStartTime,
               scriptEndTime,
               sdkVersion,

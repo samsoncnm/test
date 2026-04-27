@@ -168,7 +168,7 @@ function renderTimelineItem(step: StepMetrics, idx: number, total: number): stri
 export function renderBlueprintReport(report: MetricsReport, history: HistoryEntry[]): string {
   const { summary } = report;
   const passRate =
-    summary.totalSteps > 0 ? Math.round((summary.passCount / summary.totalSteps) * 100) : 0;
+    summary.totalSteps > 0 ? Math.round((summary.finishedSteps / summary.totalSteps) * 100) : 0;
 
   const overallStatus = summary.failCount > 0 ? "失败" : "通过";
   const statusBg =
@@ -327,7 +327,7 @@ export function renderBlueprintReport(report: MetricsReport, history: HistoryEnt
         <div class="text-xs text-[var(--text-muted)] mt-1">总步骤</div>
       </div>
       <div class="bg-[var(--bg-raised)] rounded-xl border border-[var(--border)] p-4 text-center shadow-sm">
-        <div class="text-2xl font-bold text-[var(--status-pass)] font-mono">${summary.passCount}</div>
+        <div class="text-2xl font-bold text-[var(--status-pass)] font-mono">${summary.finishedSteps}</div>
         <div class="text-xs text-[var(--text-muted)] mt-1">通过</div>
       </div>
       <div class="bg-[var(--bg-raised)] rounded-xl border border-[var(--border)] p-4 text-center shadow-sm">

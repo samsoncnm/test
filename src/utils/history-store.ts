@@ -39,7 +39,7 @@ function writeIndex(idx: HistoryIndex): void {
 export function entryFromReport(report: MetricsReport, reportPath: string): HistoryEntry {
   const { summary } = report;
   const passRate =
-    summary.totalSteps > 0 ? Math.round((summary.passCount / summary.totalSteps) * 100) : 100;
+    summary.totalSteps > 0 ? Math.round((summary.finishedSteps / summary.totalSteps) * 100) : 100;
 
   const failedStep = report.steps.find((s) => s.status === "failed");
   return {
@@ -49,7 +49,7 @@ export function entryFromReport(report: MetricsReport, reportPath: string): Hist
     mode: report.mode,
     status: summary.failCount > 0 ? "failed" : "passed",
     durationMs: summary.totalWallTimeMs,
-    passCount: summary.passCount,
+    finishedSteps: summary.finishedSteps,
     failCount: summary.failCount,
     skipCount: summary.skipCount,
     assertCount: summary.assertCount,

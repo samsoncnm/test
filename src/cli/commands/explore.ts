@@ -211,7 +211,6 @@ export async function runExplore(params: {
             if (executions.length > 0) {
               const metricsData = parseMetricsFromExecutions({
                 executions,
-                htmlPath: reportHtmlPath,
                 sdkVersion: realSdkVersion,
                 startUrl: session?.log.startUrl,
               });
@@ -343,7 +342,6 @@ async function runNonInteractive(ctx: {
         if (freezeExecutions.length > 0) {
           const metricsData = parseMetricsFromExecutions({
             executions: freezeExecutions,
-            htmlPath: reportHtmlPath,
             sdkVersion: freezeSdkVersion,
             startUrl: session.log.startUrl,
           });
