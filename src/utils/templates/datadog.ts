@@ -92,6 +92,8 @@ function renderStepRow(
     : "";
 
   const tokens = step.usage?.totalTokens;
+  const isCached = step.hitByCache || (!step.usage && step.wallTimeMs < 10000);
+  const cacheTag = isCached ? `<span class="ml-1 inline-flex items-center gap-0.5 px-1 py-0.5 bg-green-500/20 text-green-300 text-[10px] rounded font-medium">[C]</span>` : "";
 
   let html = `
     <tr class="${rowClass} cursor-pointer transition-colors" onclick="toggleRow(this)">
@@ -108,7 +110,9 @@ function renderStepRow(
       <td class="px-3 py-2.5 text-right mono text-xs ${timeClass}">${step.wallTimeMs > 0 ? formatDuration(step.wallTimeMs) : "--"}</td>
       <td class="px-3 py-2.5 text-right mono text-xs text-[var(--text-muted)]">${step.aiTimeMs > 0 ? formatDuration(step.aiTimeMs) : "--"}</td>
       <td class="px-3 py-2.5 text-right mono text-xs text-[var(--text-muted)]">${step.subTasks}</td>
-      <td class="px-3 py-2.5 text-right mono text-xs">${tokens ? tokensToStr(tokens) : "--"}</td>
+      <td class="px-3 py-2.5 text-right">
+        <span class="mono text-xs">${tokens ? tokensToStr(tokens) : "--"}</span>${cacheTag}
+      </td>
       <td class="px-3 py-2.5 text-center">
         <button class="p-1 hover:${step.status === "failed" ? "bg-red-500/20" : "bg-[var(--border)]"} rounded transition-colors focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--bg-base)]">
           ${chevron}
