@@ -1,23 +1,28 @@
 /**
  * run 命令
  * 加载 YAML 脚本并通过 midscene CLI 执行
+ *
+ * 架构说明：
+ * 主进程：负责启动 Midscene CLI，等待其退出后立即 resolve/reject（< 1s）
+ * 报告解析子进程：通过 fork() 启动，独立完成耗时的 metrics/HTML 报告生成
+ *   （包括 splitReportFile、parseMetricsFromExecutions、saveMetrics、
+ *     printMetricsSummary、renderReport），与 Midscene CLI 并行执行
+ *
+ * 根因：原方案中 setImmediate 无法让同步阻塞代码（如 splitReportFile）异步化，
+ *       进程会挂起等待解析完成才退出。fork() 彻底隔离重操作，
+ *       主进程只需等待 Midscene CLI 完成即可退出。
  */
 
-import { spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parse, stringify } from "yaml";
-import { printMetricsSummary, saveMetrics } from "../../storage/metrics-store.js";
 import { findScriptByFuzzyName, getScriptPath } from "../../storage/script-store.js";
-import type { MetricsReport } from "../../types/index.js";
-import { append, entryFromReport, prune } from "../../utils/history-store.js";
 import { log } from "../../utils/logger.js";
-import {
-  parseMetricsFromExecutions,
-  parseReportFile,
-  waitForExecutionJson,
-} from "../../utils/report-parser.js";
-import { renderReport } from "../../utils/report-renderer.js";
+
+// ESM 下 __dirname 的等价物（run.ts 与 run-parser.ts 同目录）
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
 export async function runScript(
   scriptName: string,
@@ -181,7 +186,7 @@ async function runMidscene(
       }
     });
 
-    child.on("close", async (code) => {
+    child.on("close", (code) => {
       const scriptEndTime = Date.now();
       if (code === 0) {
         log("success", "脚本执行完成");
@@ -189,59 +194,25 @@ async function runMidscene(
         log("warn", `脚本执行失败，退出码: ${code}，仍尝试解析已有报告`);
       }
 
-      // P1 性能优化：将报告解析延迟到 setImmediate，让 Midscene 有更多时间完成后台清理。
-      // 根因：Midscene CLI 退出后，splitReportFile() 内部仍有大量同步工作（文件 I/O、浏览器资源清理等），
-      // 直接在 close 回调中执行会与 CLI 进程退出竞争，导致 report 文件不稳定。
-      // setImmediate 将其推入事件循环下一阶段，让进程先完成退出清理。
-      setImmediate(async () => {
-        try {
-          const htmlFileName = `${actualName}.html`;
-          const reportDir = join(projectRoot, "midscene_run", "report");
-          const htmlPath = join(reportDir, htmlFileName);
+      // spawn() 子进程：隔离耗时的报告解析，与主进程完全解耦
+      // detached: true + stdio: inherit 让子进程独立于父进程，主进程立即 resolve/reject
+      // process.execPath + --import tsx 是 tsx 官方推荐的子进程 TypeScript 运行方式
+      const parserChild: ChildProcess = spawn(
+        process.execPath,
+        [
+          "--import",
+          "tsx",
+          join(__dirname, "run-parser.js"),
+          actualName,
+          String(scriptStartTime),
+          String(scriptEndTime),
+          projectRoot,
+        ],
+        { detached: true, stdio: "inherit" },
+      );
 
-          if (existsSync(htmlPath)) {
-            // 等待时间从 3000ms 增加到 10000ms，给予 Midscene 更多时间完成 HTML 报告写入
-            await waitForExecutionJson(reportDir, htmlFileName, 10000);
-
-            // 从 YAML 源文件解析 flow 条目信息（用于修复 isAssert 推导不准确的问题）
-            const { executions, sdkVersion } = parseReportFile(htmlPath, { scriptStartTime });
-            if (executions.length > 0) {
-              const metricsData = parseMetricsFromExecutions({
-                executions,
-                scriptStartTime,
-                scriptEndTime,
-                sdkVersion,
-              });
-
-              const metricsReport: MetricsReport = {
-                version: 1,
-                scriptName: actualName,
-                generatedAt: new Date().toISOString(),
-                mode: "run",
-                ...metricsData,
-              };
-
-              const metricsPath = await saveMetrics(metricsReport);
-              printMetricsSummary(metricsReport, { reportDir });
-              log("info", `指标报告: ${metricsPath}`);
-
-              // 生成 HTML 报告并追加历史记录
-              try {
-                const entry = entryFromReport(metricsReport, metricsPath);
-                const htmlPath = renderReport(metricsReport);
-                entry.reportHtmlPath = htmlPath;
-                append(entry);
-                prune(metricsReport.scriptName, 50);
-                log("info", `HTML 报告: ${htmlPath}`);
-              } catch (e) {
-                log("warn", `HTML 报告生成失败: ${(e as Error).message}`);
-              }
-            }
-          }
-        } catch (e) {
-          log("warn", `指标收集失败: ${(e as Error).message}`);
-        }
-      });
+      // unref() 让父进程退出时不等待子进程
+      parserChild.unref();
 
       if (code === 0) {
         resolve();

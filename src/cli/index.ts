@@ -44,7 +44,7 @@ program
       });
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
+      process.exitCode = 1;
     }
   });
 
@@ -65,7 +65,7 @@ program
       });
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
+      process.exitCode = 1;
     }
   });
 
@@ -82,7 +82,7 @@ program
       await renderReportCommand(scriptName, { theme, open: options.open });
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
+      process.exitCode = 1;
     }
   });
 
@@ -97,7 +97,7 @@ scriptsCmd
       await listScripts();
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
+      process.exitCode = 1;
     }
   });
 
@@ -110,7 +110,7 @@ scriptsCmd
       await removeScript(scriptName);
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
+      process.exitCode = 1;
     }
   });
 
@@ -123,7 +123,7 @@ scriptsCmd
       await cleanCache(scriptName);
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
+      process.exitCode = 1;
     }
   });
 
@@ -135,7 +135,7 @@ scriptsCmd
       await clearAllCache();
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
+      process.exitCode = 1;
     }
   });
 
@@ -147,7 +147,7 @@ scriptsCmd
       await listCache();
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
-      process.exit(1);
+      process.exitCode = 1;
     }
   });
 
