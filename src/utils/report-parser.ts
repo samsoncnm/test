@@ -412,34 +412,42 @@ export function parseMetricsFromExecutions(params: {
     const isAssertFlag = group.isAssertFlag;
 
     // screenshots = 从每个 task 的 uiContext.screenshot.path 和 recorder[].screenshot.path 提取（去重）
+    // 修复截图路径：./screenshots/xxx.jpeg -> ../../../report/screenshots/xxx.jpeg
+    // 原因：HTML 报告在 midscene_run/output/reports/run/，截图在 midscene_run/report/screenshots/
+    //       从 HTML 目录出发：..→reports/，../..→output/，../../..→midscene_run/，../../../report→midscene_run/report/
     const screenshotSet = new Set<string>();
     const screenshots: string[] = [];
+    const fixScreenshotPath = (p: string) =>
+      p.startsWith("./screenshots/") ? `../../../report/${p.slice(2)}` : p;
     for (const t of tasks) {
       const ss = t.uiContext?.screenshot as Record<string, unknown> | undefined;
       const screenshotPath = (ss?.path as string) ?? "";
-      if (screenshotPath && !screenshotSet.has(screenshotPath)) {
-        screenshotSet.add(screenshotPath);
-        screenshots.push(screenshotPath);
+      if (screenshotPath) {
+        const fixed = fixScreenshotPath(screenshotPath);
+        if (!screenshotSet.has(fixed)) {
+          screenshotSet.add(fixed);
+          screenshots.push(fixed);
+        }
       }
       const recorder = t.recorder;
       if (recorder) {
         for (const entry of recorder) {
           const entrySs = entry.screenshot as Record<string, unknown> | undefined;
           const recPath = (entrySs?.path as string) ?? "";
-          if (recPath && !screenshotSet.has(recPath)) {
-            screenshotSet.add(recPath);
-            screenshots.push(recPath);
+          if (recPath) {
+            const fixed = fixScreenshotPath(recPath);
+            if (!screenshotSet.has(fixed)) {
+              screenshotSet.add(fixed);
+              screenshots.push(fixed);
+            }
           }
         }
       }
     }
 
-    // absoluteStartTime = execution.logTime + timing.start
-    const task0TimingStart = tasks[0]?.timing?.start;
+    // absoluteStartTime = execution.logTime（timing.start 本身已是毫秒级时间戳，再相加会溢出）
     const absoluteStartTime =
-      group.executionLogTime !== undefined && task0TimingStart !== undefined
-        ? group.executionLogTime + task0TimingStart
-        : undefined;
+      group.executionLogTime !== undefined ? group.executionLogTime : undefined;
 
     steps.push({
       userInstruction: group.userInstruction,

@@ -4,7 +4,7 @@
  * 设计系统：CSS 变量 + Datadog 琥珀橙品牌色
  */
 
-import type { HistoryEntry, MetricsReport, StepMetrics } from "../../types/index.js";
+import type { HistoryEntry, MetricsReport, StepMetrics, TaskUsage } from "../../types/index.js";
 
 // ── 工具函数 ─────────────────────────────────────────────────────────────────
 
@@ -48,6 +48,64 @@ function formatDate(iso: string): string {
   }
 }
 
+// ── 成本估算 ─────────────────────────────────────────────────────────────────
+
+const MODEL_PRICING: Record<string, { inputPer1M: number; outputPer1M: number }> = {
+  "qwen3-vl-plus": { inputPer1M: 0.04, outputPer1M: 0.16 },
+  "qwen3-32b": { inputPer1M: 0.0004, outputPer1M: 0.0012 },
+  default: { inputPer1M: 0.01, outputPer1M: 0.03 },
+};
+
+function estimateCost(usage: TaskUsage): number {
+  const pricing = MODEL_PRICING[usage.modelName] ?? MODEL_PRICING["default"];
+  return (
+    (usage.promptTokens / 1_000_000) * pricing.inputPer1M +
+    (usage.completionTokens / 1_000_000) * pricing.outputPer1M
+  );
+}
+
+// ── Possible Causes 推断 ───────────────────────────────────────────────────────
+
+const CAUSE_RULES: Array<{ pattern: RegExp; causes: string[] }> = [
+  {
+    pattern: /timeout|超时|定位超时/i,
+    causes: [
+      "页面结构变更，按钮选择器已失效",
+      "登录按钮需要滚动才能可见",
+      "按钮在 iframe 内或需要等待动画完成",
+    ],
+  },
+  {
+    pattern: /nocursor|未找到|找不到|cannot find|no element/i,
+    causes: ["目标元素已被移除或隐藏", "页面尚未加载完成，需要增加等待时间", "元素被其他元素遮挡"],
+  },
+  {
+    pattern: /network|网络|请求失败|fetch/i,
+    causes: ["网络不稳定导致请求超时", "后端服务暂时不可用", "API 接口地址变更"],
+  },
+  {
+    pattern: /assert|断言|不符合|验证失败/i,
+    causes: ["页面内容与预期不符", "测试数据状态已变化", "页面渲染时机问题"],
+  },
+];
+function inferCauses(errorMessage: string): string[] {
+  for (const rule of CAUSE_RULES) {
+    if (rule.pattern.test(errorMessage)) return rule.causes;
+  }
+  return ["目标元素可能已被移除或隐藏", "页面结构可能已发生变化", "网络或加载条件导致元素未就绪"];
+}
+
+// ── 连续通过次数 ─────────────────────────────────────────────────────────────
+
+function computeConsecutivePasses(history: HistoryEntry[]): number {
+  let count = 0;
+  for (const h of history) {
+    if (h.status === "passed") count++;
+    else break;
+  }
+  return count;
+}
+
 // ── 步骤行渲染 ────────────────────────────────────────────────────────────────
 
 function renderStepRow(
@@ -56,6 +114,7 @@ function renderStepRow(
   isExpanded: boolean,
   prevStep: StepMetrics | null,
   nextStep: StepMetrics | null,
+  steps: StepMetrics[],
 ): string {
   const n = idx + 1;
   const statusBadge = renderStatusBadge(step.status);
@@ -73,6 +132,8 @@ function renderStepRow(
     ? `<i data-lucide="chevron-down" class="w-4 h-4 ${step.status === "failed" ? "text-red-400" : "text-[var(--text-muted)]"}"></i>`
     : `<i data-lucide="chevron-right" class="w-4 h-4 text-[var(--text-muted)]"></i>`;
 
+  const chevronBtn = `<button class="p-1 hover:${step.status === "failed" ? "bg-red-500/20" : "bg-[var(--border)]"} rounded transition-colors focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--bg-base)]" onclick="toggleNextRow(this); event.stopPropagation();">${chevron}</button>`;
+
   const actionTags = step.actions
     ? step.actions
         .slice(0, 3)
@@ -84,7 +145,7 @@ function renderStepRow(
     : "";
 
   const cacheWarning = step.hitByCache
-    ? `<span class="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs rounded" title="使用了缓存 xpath，但元素可能已变化"><i data-lucide="cache" class="w-3 h-3"></i> 缓存</span>`
+    ? `<span class="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs rounded" title="使用了缓存 xpath，元素可能已变化"><i data-lucide="cache" class="w-3 h-3"></i> 缓存</span>`
     : "";
 
   const assertMark = step.isAssert
@@ -98,7 +159,7 @@ function renderStepRow(
     : "";
 
   let html = `
-    <tr class="${rowClass} cursor-pointer transition-colors" onclick="toggleRow(this)">
+    <tr class="${rowClass} cursor-pointer transition-colors">
       <td class="px-3 py-2.5 mono text-xs ${idxClass}">${n}</td>
       <td class="px-3 py-2.5">${statusBadge}</td>
       <td class="px-3 py-2.5">
@@ -116,15 +177,12 @@ function renderStepRow(
         <span class="mono text-xs">${tokens ? tokensToStr(tokens) : "--"}</span>${cacheTag}
       </td>
       <td class="px-3 py-2.5 text-center">
-        <button class="p-1 hover:${step.status === "failed" ? "bg-red-500/20" : "bg-[var(--border)]"} rounded transition-colors focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--bg-base)]">
-          ${chevron}
-        </button>
+        ${chevronBtn}
       </td>
     </tr>`;
 
-  if (isExpanded) {
-    html += renderExpandedRow(step, idx, prevStep, nextStep);
-  }
+  // 展开行始终生成，点击按钮时通过 data-hidden 属性控制显隐
+  html += renderExpandedRow(step, idx, prevStep, nextStep, steps, isExpanded);
 
   return html;
 }
@@ -148,21 +206,49 @@ function renderExpandedRow(
   idx: number,
   prevStep: StepMetrics | null,
   nextStep: StepMetrics | null,
+  steps: StepMetrics[],
+  isExpanded: boolean,
 ): string {
-  const screenshots = step.screenshots?.length
-    ? step.screenshots
-        .map(
-          (s) =>
-            `<img src="${escapeHtml(s)}" alt="screenshot" class="w-full rounded border border-[var(--border)] mb-2">`,
-        )
-        .join("")
-    : '<div class="text-xs text-[var(--text-muted)] italic">无截图</div>';
+  const beforeImg = step.screenshots?.[0] ?? null;
+  const afterImg = step.screenshots?.[1] ?? null;
+
+  const screenshotsSection =
+    beforeImg || afterImg
+      ? `
+      <div style="display:flex;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div class="text-xs text-[var(--text-muted)] mb-1.5 font-medium">操作前</div>
+          ${
+            beforeImg
+              ? `<img src="${escapeHtml(beforeImg)}" alt="操作前" class="cursor-pointer" style="width:100%;aspect-ratio:16/9;object-fit:contain;border-radius:6px;border:1px solid var(--border)" onclick="openLightbox(this.src)">`
+              : '<div style="width:100%;aspect-ratio:16/9;border-radius:6px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-muted);background:var(--bg-raised)">无截图</div>'
+          }
+        </div>
+        <div style="flex:1;min-width:0">
+          <div class="text-xs text-[var(--text-muted)] mb-1.5 font-medium">操作后</div>
+          ${
+            afterImg
+              ? `<img src="${escapeHtml(afterImg)}" alt="操作后" class="cursor-pointer" style="width:100%;aspect-ratio:16/9;object-fit:contain;border-radius:6px;border:1px solid var(--border)" onclick="openLightbox(this.src)">`
+              : '<div style="width:100%;aspect-ratio:16/9;border-radius:6px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-muted);background:var(--bg-raised)">无截图</div>'
+          }
+        </div>
+      </div>`
+      : "";
 
   let errorDetails = "";
   if (step.status === "failed") {
     const errFull = step.errorMessage
       ? `<span class="text-[var(--status-fail)]">${escapeHtml(step.errorType ?? "Error")}: </span><span class="text-red-300">${escapeHtml(step.errorMessage)}</span>`
       : '<span class="text-[var(--text-muted)]">无错误信息</span>';
+
+    const errText = `${step.errorType ?? ""} ${step.errorMessage ?? ""}`;
+    const causes = inferCauses(errText);
+    const causesList = causes
+      .map(
+        (c) =>
+          `<li class="flex items-start gap-1.5"><i data-lucide="arrow-right" class="w-3 h-3 text-yellow-400 mt-0.5 flex-shrink-0"></i>${escapeHtml(c)}</li>`,
+      )
+      .join("");
 
     let hitByCacheAlert = "";
     if (step.hitByCache) {
@@ -186,22 +272,21 @@ function renderExpandedRow(
         <div class="bg-[var(--bg-raised)] rounded p-3 border border-[var(--status-fail-bg)]">
           <div class="mono text-sm">${errFull}</div>
           ${hitByCacheAlert}
-          ${stackTrace}
         </div>
+        <div class="mt-3">
+          <div class="text-xs text-[var(--text-muted)] mb-1">可能原因</div>
+          <ul class="space-y-1 text-xs text-[var(--text-secondary)]">${causesList}</ul>
+        </div>
+        ${stackTrace}
       </div>`;
   }
 
   let prevContext = "";
-  if (prevStep) {
-    const prevSs = prevStep.screenshots?.length
-      ? `<img src="${escapeHtml(prevStep.screenshots[prevStep.screenshots.length - 1])}" alt="prev screenshot" class="w-full rounded border border-[var(--border)]">`
-      : '<div class="text-xs text-[var(--text-muted)] italic">无截图</div>';
+  if (step.status === "failed" && prevStep) {
     prevContext = `
       <div class="border-t border-dashed border-[var(--status-fail-bg)] pt-3 mt-3">
-        <div class="text-xs text-[var(--status-fail)] mb-1 flex items-center gap-1"><i data-lucide="arrow-up" class="w-3 h-3"></i> 前置步骤 #${idx}</div>
-        <div class="text-sm text-[var(--text-secondary)] mb-2">${escapeHtml(prevStep.userInstruction)}</div>
-        <div class="text-xs text-[var(--text-muted)] mb-1">截图</div>
-        ${prevSs}
+        <div class="text-xs text-[var(--status-fail)] mb-1 flex items-center gap-1"><i data-lucide="arrow-up" class="w-3 h-3"></i> 前置步骤 #${idx - 1}</div>
+        <div class="text-sm text-[var(--text-secondary)]">${escapeHtml(prevStep.userInstruction)}</div>
       </div>`;
   }
 
@@ -214,19 +299,16 @@ function renderExpandedRow(
       </div>`;
   }
 
+  const hiddenAttr = isExpanded ? 'data-hidden="0"' : 'data-hidden="1"';
+  const hiddenStyle = isExpanded ? "" : ' style="display:none"';
   return `
-    <tr class="bg-[var(--bg-base)]">
+    <tr class="bg-[var(--bg-base)]" ${hiddenAttr}${hiddenStyle}>
       <td colspan="8" class="px-6 py-4">
-        <div class="grid grid-cols-3 gap-4">
-          <div class="col-span-2 space-y-3">
-            ${errorDetails}
-            ${prevContext}
-            ${nextContext}
-          </div>
-          <div>
-            <div class="text-xs text-[var(--text-muted)] mb-1">截图</div>
-            ${screenshots}
-          </div>
+        <div class="space-y-3">
+          ${errorDetails}
+          ${prevContext}
+          ${nextContext}
+          ${screenshotsSection}
         </div>
       </td>
     </tr>`;
@@ -273,6 +355,12 @@ function renderHistoryTrend(history: HistoryEntry[]): string {
     history.reduce((a, h) => a + h.durationMs, 0) / history.length / 1000,
   );
 
+  const consecutivePasses = computeConsecutivePasses(history);
+  const consecutiveHint =
+    consecutivePasses > 0
+      ? `<span class="flex items-center gap-1 text-[var(--status-pass)]"><i data-lucide="arrow-up" class="w-3 h-3"></i>${consecutivePasses}次连续通过后出现本次失败</span>`
+      : "";
+
   return `
     <div class="p-4">
       <div class="flex items-end justify-between gap-2 h-24">
@@ -282,8 +370,8 @@ function renderHistoryTrend(history: HistoryEntry[]): string {
         <div class="flex items-center gap-4">
           <span>历史平均通过率: <span class="text-[var(--status-pass)] mono font-medium">${avgPassRate}%</span></span>
           <span>历史平均耗时: <span class="mono font-medium">${avgDuration}s</span></span>
-          <span class="text-[8px] text-[var(--text-muted)]">(不含本次)</span>
         </div>
+        <div class="flex items-center gap-2">${consecutiveHint}</div>
       </div>
     </div>`;
 }
@@ -313,6 +401,28 @@ function renderTokenBreakdown(report: MetricsReport): string {
           .join("")
       : "";
 
+  // 成本估算
+  let costCard = "";
+  const primaryUsage = summary.modelBreakdown[0];
+  if (primaryUsage && totalTokens > 0) {
+    const usage: TaskUsage = {
+      promptTokens: primaryUsage.totalTokens,
+      completionTokens: 0,
+      totalTokens,
+      cachedTokens: 0,
+      timeCostMs: 0,
+      modelName: primaryUsage.modelName,
+      intent: primaryUsage.intent,
+    };
+    const cost = estimateCost(usage);
+    costCard = `
+        <div class="bg-[var(--bg-base)] rounded p-3 border border-[var(--border)]">
+          <div class="text-xs text-[var(--text-muted)] mb-1">成本估算</div>
+          <div class="text-2xl font-bold mono text-purple-400">~$${cost.toFixed(4)}</div>
+          <div class="text-xs text-[var(--text-muted)] mt-1">${escapeHtml(primaryUsage.modelName)}</div>
+        </div>`;
+  }
+
   return `
     <div class="p-4">
       <div class="grid grid-cols-4 gap-4">
@@ -331,11 +441,7 @@ function renderTokenBreakdown(report: MetricsReport): string {
           <div class="text-2xl font-bold mono text-[var(--brand)]">${tokensToStr(avgPerStep)}</div>
           <div class="text-xs text-[var(--text-muted)] mt-1">Token/步</div>
         </div>
-        <div class="bg-[var(--bg-base)] rounded p-3 border border-[var(--border)]">
-          <div class="text-xs text-[var(--text-muted)] mb-1">模型</div>
-          <div class="text-xl font-bold mono text-[var(--brand)]">${summary.modelBreakdown[0]?.modelName ?? "unknown"}</div>
-          <div class="text-xs text-[var(--text-muted)] mt-1">${summary.modelBreakdown[0]?.intent ?? ""}</div>
-        </div>
+        ${costCard}
       </div>
       ${
         tokenBars
@@ -377,8 +483,8 @@ function renderAlertPanel(report: MetricsReport): string {
     : "";
 
   const screenshot = failedStep.screenshots?.length
-    ? `<img src="${escapeHtml(failedStep.screenshots[failedStep.screenshots.length - 1])}" alt="Failure screenshot" class="w-full h-44 object-cover rounded">`
-    : `<div class="w-full h-44 bg-[var(--bg-base)] rounded border border-[var(--status-fail-bg)] flex items-center justify-center text-[var(--text-muted)] text-sm">无失败截图</div>`;
+    ? `<img src="${escapeHtml(failedStep.screenshots[failedStep.screenshots.length - 1])}" alt="失败截图" class="w-full aspect-video object-contain rounded cursor-pointer" onclick="openLightbox(this.src)">`
+    : `<div class="w-full aspect-video bg-[var(--bg-base)] rounded border border-[var(--status-fail-bg)] flex items-center justify-center text-[var(--text-muted)] text-sm">无失败截图</div>`;
 
   return `
     <div class="bg-red-950/50 border-2 border-[var(--status-fail)]/80 rounded-lg alert-glow overflow-hidden">
@@ -399,6 +505,20 @@ function renderAlertPanel(report: MetricsReport): string {
                 <i data-lucide="alert-triangle" class="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0"></i>
                 <div class="mono text-sm">${errMsg}</div>
               </div>
+            </div>
+            <div class="flex gap-2">
+              <button onclick="alert('重试步骤：从第 ${idx + 1} 步重新运行（CLI 支持中）')" class="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-raised)] hover:bg-[var(--border)] rounded text-sm transition-colors">
+                <i data-lucide="play" class="w-4 h-4 text-blue-400"></i>
+                <span>重试步骤</span>
+              </button>
+              <button onclick="alert('跳过继续：从第 ${idx + 2} 步继续执行（CLI 支持中）')" class="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-raised)] hover:bg-[var(--border)] rounded text-sm transition-colors">
+                <i data-lucide="skip-forward" class="w-4 h-4 text-yellow-400"></i>
+                <span>跳过继续</span>
+              </button>
+              <button onclick="alert('建议修复：AI 驱动修复建议（功能开发中）')" class="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--bg-raised)] hover:bg-[var(--border)] rounded text-sm transition-colors">
+                <i data-lucide="wrench" class="w-4 h-4 text-green-400"></i>
+                <span>建议修复</span>
+              </button>
             </div>
           </div>
           <div class="w-80 flex-shrink-0">
@@ -481,7 +601,7 @@ function renderStepsTable(report: MetricsReport): string {
     .map((step, i) => {
       const prev: StepMetrics | null = i > 0 ? steps[i - 1]! : null;
       const next: StepMetrics | null = i < steps.length - 1 ? steps[i + 1]! : null;
-      return renderStepRow(step, i, i === failedIdx, prev, next);
+      return renderStepRow(step, i, i === failedIdx, prev, next, steps);
     })
     .join("");
 
@@ -511,7 +631,7 @@ function renderStepsTable(report: MetricsReport): string {
               <th class="px-3 py-2 text-center font-medium w-16">操作</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-[var(--border)]/50">
+          <tbody id="steps-tbody" class="divide-y divide-[var(--border)]/50">
             ${rows}
           </tbody>
         </table>
@@ -582,6 +702,13 @@ export function renderDatadogReport(report: MetricsReport, history: HistoryEntry
     /* Row hover */
     .row-hover:hover { background: var(--brand-dim); }
 
+    /* Screenshot comparison: side by side */
+    .ss-compare { display: flex; gap: 12px; }
+    .ss-compare-cell { flex: 1; min-width: 0; }
+    .ss-compare-cell img { width: 100%; aspect-ratio: 16/9; object-fit: contain; border-radius: 6px; border: 1px solid var(--border); }
+    .ss-compare-cell img + img { margin-top: 4px; }
+    .ss-placeholder { width: 100%; aspect-ratio: 16/9; border-radius: 6px; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--text-muted); background: var(--bg-raised); }
+
     /* Status dot pulse */
     .status-dot { animation: pulse 2s infinite; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
@@ -615,6 +742,31 @@ export function renderDatadogReport(report: MetricsReport, history: HistoryEntry
       </div>
     </div>
     <div class="flex items-center gap-3">
+      <div class="relative">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"></i>
+        <input type="text" id="step-search" placeholder="搜索步骤..." class="pl-9 pr-4 py-1.5 bg-[var(--bg-base)] rounded border border-[var(--border)] text-sm w-48 focus:outline-none focus:border-[var(--brand)] transition-colors" oninput="filterSteps()">
+      </div>
+      <div class="relative">
+        <button id="filter-btn" class="flex items-center gap-2 px-3 py-1.5 bg-[var(--bg-base)] rounded border border-[var(--border)] hover:border-[var(--brand)] transition-colors text-sm" onclick="toggleFilterMenu()">
+          <i data-lucide="filter" class="w-4 h-4"></i>
+          <span>过滤</span>
+        </button>
+        <div id="filter-menu" class="hidden absolute right-0 mt-1 w-48 bg-[var(--bg-raised)] rounded border border-[var(--border)] shadow-lg z-10 py-1">
+          <label class="flex items-center gap-2 px-3 py-2 hover:bg-[var(--border)] cursor-pointer text-sm">
+            <input type="checkbox" id="filter-pass" checked onchange="filterSteps()" class="accent-[var(--brand)]"> 显示通过
+          </label>
+          <label class="flex items-center gap-2 px-3 py-2 hover:bg-[var(--border)] cursor-pointer text-sm">
+            <input type="checkbox" id="filter-fail" checked onchange="filterSteps()" class="accent-[var(--brand)]"> 显示失败
+          </label>
+          <label class="flex items-center gap-2 px-3 py-2 hover:bg-[var(--border)] cursor-pointer text-sm">
+            <input type="checkbox" id="filter-skip" checked onchange="filterSteps()" class="accent-[var(--brand)]"> 显示跳过
+          </label>
+        </div>
+      </div>
+      <button onclick="exportReport()" class="flex items-center gap-2 px-3 py-1.5 bg-[var(--brand)] hover:opacity-90 rounded text-sm font-medium transition-colors text-white">
+        <i data-lucide="download" class="w-4 h-4"></i>
+        <span>Export</span>
+      </button>
       <span class="text-xs text-[var(--text-muted)]">${escapeHtml(report.environment.sdkVersion)}</span>
     </div>
   </header>
@@ -649,7 +801,7 @@ export function renderDatadogReport(report: MetricsReport, history: HistoryEntry
     <div class="bg-[var(--bg-raised)] rounded-lg border border-[var(--border)] overflow-hidden">
       <div class="px-4 py-3 border-b border-[var(--border)] flex items-center gap-2">
           <i data-lucide="bar-chart-2" class="w-4 h-4 text-[var(--brand)]"></i>
-        <span class="font-semibold text-sm">Token 消耗明细</span>
+          <span class="font-semibold text-sm">Token 消耗明细</span>
       </div>
       ${renderTokenBreakdown(report)}
     </div>
@@ -664,7 +816,15 @@ export function renderDatadogReport(report: MetricsReport, history: HistoryEntry
       </span>
       <span class="mono">${escapeHtml(report.environment.sdkVersion)}</span>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-4">
+      <a href="#" onclick="alert('JSON report: see midscene_run/output/metrics/');return false" class="flex items-center gap-1 hover:text-[var(--brand)] transition-colors">
+        <i data-lucide="file-text" class="w-3 h-3"></i>
+        JSON 报告
+      </a>
+      <a href="#" onclick="alert('Share: copy link to clipboard (TODO)');return false" class="flex items-center gap-1 hover:text-[var(--brand)] transition-colors">
+        <i data-lucide="share-2" class="w-3 h-3"></i>
+        分享
+      </a>
       <span class="w-2 h-2 rounded-full bg-[var(--brand)]"></span>
       <span>Datadog 风格</span>
     </div>
@@ -675,9 +835,75 @@ export function renderDatadogReport(report: MetricsReport, history: HistoryEntry
     function toggleRow(btn) {
       var tr = btn.closest('tr');
       var next = tr.nextElementSibling;
-      if (next && next.classList.contains('bg-[var(--bg-base)]')) {
+      if (next && next.hasAttribute('data-hidden')) {
         next.style.display = next.style.display === 'none' ? '' : 'none';
       }
+    }
+    function toggleNextRow(btn) {
+      var tr = btn.closest('tr');
+      var next = tr.nextElementSibling;
+      if (next && next.hasAttribute('data-hidden')) {
+        var isHidden = next.getAttribute('data-hidden') === '1';
+        next.style.display = isHidden ? '' : 'none';
+        next.setAttribute('data-hidden', isHidden ? '0' : '1');
+      }
+    }
+    function toggleFilterMenu() {
+      var menu = document.getElementById('filter-menu');
+      if (menu) menu.classList.toggle('hidden');
+    }
+    function filterSteps() {
+      var search = document.getElementById('step-search');
+      var filterPass = document.getElementById('filter-pass');
+      var filterFail = document.getElementById('filter-fail');
+      var filterSkip = document.getElementById('filter-skip');
+      var keyword = search ? search.value.toLowerCase() : '';
+      var showPass = filterPass ? filterPass.checked : true;
+      var showFail = filterFail ? filterFail.checked : true;
+      var showSkip = filterSkip ? filterSkip.checked : true;
+      var tbody = document.getElementById('steps-tbody');
+      if (!tbody) return;
+      var rows = tbody.querySelectorAll('tr');
+      rows.forEach(function(row) {
+        var hasExpanded = row.hasAttribute('data-hidden');
+        var prevRow = hasExpanded ? null : row;
+        if (hasExpanded) return;
+        var text = row.textContent ? row.textContent.toLowerCase() : '';
+        var badge = row.querySelector('[class*="rounded-full"]');
+        var status = '';
+        if (badge) {
+          var badgeText = badge.textContent ? badge.textContent.toLowerCase() : '';
+          if (badgeText.includes('通过')) status = 'pass';
+          else if (badgeText.includes('失败')) status = 'fail';
+          else if (badgeText.includes('跳过')) status = 'skip';
+        }
+        var matchKeyword = keyword === '' || text.indexOf(keyword) > -1;
+        var matchFilter = (status === 'pass' && showPass) ||
+                          (status === 'fail' && showFail) ||
+                          (status === 'skip' && showSkip) ||
+                          status === '';
+        row.style.display = (matchKeyword && matchFilter) ? '' : 'none';
+      });
+    }
+    function exportReport() {
+      alert('Export: download JSON/CSV report (TODO)');
+    }
+    document.addEventListener('click', function(e) {
+      var menu = document.getElementById('filter-menu');
+      var btn = document.getElementById('filter-btn');
+      if (menu && btn && !btn.contains(e.target) && !menu.contains(e.target)) {
+        menu.classList.add('hidden');
+      }
+    });
+    function openLightbox(src) {
+      var overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:pointer;';
+      overlay.onclick = function() { document.body.removeChild(overlay); };
+      var img = document.createElement('img');
+      img.src = src;
+      img.style.cssText = 'max-width:90vw;max-height:90vh;object-fit:contain;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,0.5);';
+      overlay.appendChild(img);
+      document.body.appendChild(overlay);
     }
   </script>
 </body>
