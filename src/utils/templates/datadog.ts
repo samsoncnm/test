@@ -128,9 +128,10 @@ function renderStepRow(
     step.status === "failed" ? "text-red-400 font-semibold" : "text-[var(--text-muted)]";
   const instrClass = step.status === "failed" ? "font-medium text-red-200" : "text-sm";
   const timeClass = step.status === "failed" ? "text-red-300" : "";
+  const chevronColor = step.status === "failed" ? "#f87171" : "#6b7280";
   const chevron = isExpanded
-    ? `<i data-lucide="chevron-down" class="w-4 h-4 ${step.status === "failed" ? "text-red-400" : "text-[var(--text-muted)]"}"></i>`
-    : `<i data-lucide="chevron-right" class="w-4 h-4 text-[var(--text-muted)]"></i>`;
+    ? `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${chevronColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`
+    : `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${chevronColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
 
   const chevronBtn = `<button class="p-1 hover:${step.status === "failed" ? "bg-red-500/20" : "bg-[var(--border)]"} rounded transition-colors focus-visible:ring-2 focus-visible:ring-[var(--brand)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--bg-base)]" onclick="toggleNextRow(this); event.stopPropagation();">${chevron}</button>`;
 
@@ -846,6 +847,15 @@ export function renderDatadogReport(report: MetricsReport, history: HistoryEntry
         var isHidden = next.getAttribute('data-hidden') === '1';
         next.style.display = isHidden ? '' : 'none';
         next.setAttribute('data-hidden', isHidden ? '0' : '1');
+        var iconEl = btn.querySelector('svg');
+        if (iconEl) {
+          var isFailed = btn.closest('tr').querySelector('.text-red-400') !== null;
+          var color = isFailed ? '#f87171' : '#6b7280';
+          var newIcon = isHidden
+            ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'
+            : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="' + color + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>';
+          iconEl.outerHTML = newIcon;
+        }
       }
     }
     function toggleFilterMenu() {
