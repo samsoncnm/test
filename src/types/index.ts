@@ -89,6 +89,18 @@ export interface MetricsReport {
     skipCount: number;
     /** 断言步骤总数（yamlFlow 中 aiAssert 条目数） */
     assertCount: number;
+    /** 估算节省 token（缓存命中时 SDK 不调用 AI，每次 Locate 约 2836 tokens） */
+    estimatedSavedTokens: number;
+    /** Token 消耗结构分解：每次 Locate 调用平均 token（无缓存时） */
+    tokenPerLocate: number;
+    /** Token 消耗结构分解：每次 Assert 调用平均 token */
+    tokenPerAssert: number;
+    /** Token 消耗结构分解：Locate 调用总次数 */
+    locateCallCount: number;
+    /** 仅 step 执行耗时（分步 wallTime 相加），不含 CLI 启动 / 浏览器启动 / 页面加载等开销 */
+    totalExecutionWallTimeMs: number;
+    /** 总进程耗时中的非执行开销（totalWallTimeMs - totalExecutionWallTimeMs） */
+    overheadMs: number;
     modelBreakdown: Array<{
       modelName: string;
       intent: string;

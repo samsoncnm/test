@@ -14,7 +14,10 @@ import type { MetricsReport, ParsedExecution, StepMetrics, TaskUsage } from "../
  * @param htmlPath - Midscene HTML 报告文件路径
  * @returns 解析后的 execution 列表及 SDK 版本号
  */
-export function parseReportFile(htmlPath: string): {
+export function parseReportFile(
+  htmlPath: string,
+  options?: { scriptStartTime?: number },
+): {
   executions: ParsedExecution[];
   sdkVersion: string;
 } {
@@ -29,6 +32,12 @@ export function parseReportFile(htmlPath: string): {
 
   const executions: ParsedExecution[] = [];
   let sdkVersion = "unknown";
+
+  // 使用 scriptStartTime 过滤：只保留 logTime >= scriptStartTime 的 executions
+  // 这解决了 HTML 报告包含历史 executions 导致 metrics 混入旧数据的问题
+  // midscene_run 目录下同一脚本的 HTML 报告会追加所有历史 executions，
+  // 而旧 executions 的 logTime 远早于当前 scriptStartTime
+  const minLogTime = options?.scriptStartTime ?? 0;
 
   for (const jsonFile of result.executionJsonFiles) {
     if (!fs.existsSync(jsonFile)) {
@@ -45,9 +54,16 @@ export function parseReportFile(htmlPath: string): {
     const executionList = raw.executions ?? [];
 
     for (const exec of executionList) {
+      const execLogTime = exec.logTime as number | undefined;
+
+      // 过滤：跳过 logTime 早于 scriptStartTime 的旧 executions
+      // 对于无 scriptStartTime 的调用（向后兼容），不过滤
+      if (minLogTime > 0 && execLogTime !== undefined && execLogTime < minLogTime) {
+        continue;
+      }
+
       const taskList = exec.tasks ?? [];
       const execId = exec.id ?? "";
-      const execLogTime = exec.logTime as number | undefined;
 
       for (const task of taskList) {
         const output = task.output ?? {};
@@ -235,14 +251,26 @@ export function parseMetricsFromExecutions(params: {
       tasks: NonNullable<ParsedExecution["_rawTask"]>[];
       /** 缓存命中标记（任一 task 有 hitBy.from === "Cache" 即为 true） */
       hitByCache: boolean;
+      /** 估算节省的 token 数（缓存命中时，SDK 不调用 AI，估算每次 Locate ≈ 2836 tokens） */
+      cachedTokensEstimate: number;
       /** 绝对时间戳基准（execution.logTime），用于推导 absoluteStartTime */
       executionLogTime?: number;
+      /** 是否为断言任务（根据 execution 名字判断） */
+      isAssertFlag: boolean;
     }
   >();
 
   for (const exec of params.executions) {
     const rawTask = exec._rawTask;
     if (!rawTask) continue;
+
+    // 判断是否为断言任务（"Assert - xxx" 或 "Insight - xxx" 格式）
+    const execTaskName = exec.taskName ?? "";
+    const execTaskNameLower = execTaskName.toLowerCase();
+    const isExecAssert =
+      execTaskNameLower.startsWith("assert") ||
+      execTaskNameLower.startsWith("insight") ||
+      execTaskNameLower.includes("断言");
 
     // B1: 改用 exec.name 归一化分组，替代 execution.id
     const groupKey = normalizeExecName(exec.taskName);
@@ -253,8 +281,14 @@ export function parseMetricsFromExecutions(params: {
         userInstruction: inferUserInstruction(rawTask, exec.taskName),
         tasks: [],
         hitByCache: false,
+        cachedTokensEstimate: 0,
         executionLogTime: exec.executionLogTime,
+        isAssertFlag: isExecAssert,
       });
+    } else {
+      // 如果同名 group 已有，更新 isAssertFlag（如果任一 execution 是 assert 则为 assert）
+      const existing = stepMap.get(groupKey)!;
+      existing.isAssertFlag = existing.isAssertFlag || isExecAssert;
     }
     stepMap.get(groupKey)!.tasks.push(rawTask);
 
@@ -264,6 +298,8 @@ export function parseMetricsFromExecutions(params: {
     const hitBy = output?.hitBy as Record<string, unknown> | undefined;
     if (hitBy?.from === "Cache") {
       stepMap.get(groupKey)!.hitByCache = true;
+      // 缓存命中时 SDK 不调用 AI，估算节省约 2836 tokens（截图 vision input）
+      stepMap.get(groupKey)!.cachedTokensEstimate += 2836;
     }
   }
 
@@ -372,10 +408,8 @@ export function parseMetricsFromExecutions(params: {
       }
     }
 
-    // isAssert = 检查 yamlFlow 中是否存在 aiAssert 条目
-    const isAssert = flatFlow.some((item) =>
-      Object.prototype.hasOwnProperty.call(item, "aiAssert"),
-    );
+    // isAssert = 直接从 stepMap 的 isAssertFlag 取值（在 stepMap 构建时已计算）
+    const isAssertFlag = group.isAssertFlag;
 
     // screenshots = 从每个 task 的 uiContext.screenshot.path 和 recorder[].screenshot.path 提取（去重）
     const screenshotSet = new Set<string>();
@@ -418,7 +452,7 @@ export function parseMetricsFromExecutions(params: {
       actions: actions.length > 0 ? actions : undefined,
       screenshots: screenshots.length > 0 ? screenshots : undefined,
       hitByCache: group.hitByCache,
-      isAssert: isAssert || undefined,
+      isAssert: isAssertFlag || undefined,
       absoluteStartTime,
       ...(status === "failed"
         ? (() => {
@@ -460,11 +494,14 @@ export function parseMetricsFromExecutions(params: {
   let failCount = 0;
   let skipCount = 0;
   let assertCount = 0;
+  let estimatedSavedTokens = 0;
   const modelMap = new Map<string, { tokens: number; aiTime: number }>();
 
   for (const step of steps) {
     totalAiTimeMs += step.aiTimeMs;
-    if (step.hitByCache) hitByCacheCount++;
+    if (step.hitByCache) {
+      hitByCacheCount++;
+    }
     if (step.status === "finished") passCount++;
     else if (step.status === "failed") failCount++;
     else if (step.status === "skipped" || step.status === "cancelled") skipCount++;
@@ -480,6 +517,45 @@ export function parseMetricsFromExecutions(params: {
       });
     }
   }
+
+  // 从 stepMap 汇总估算节省 token（缓存命中时 SDK 不调用 AI，无 usage 字段）
+  for (const [, group] of stepMap) {
+    estimatedSavedTokens += group.cachedTokensEstimate;
+  }
+
+  // 计算 token 消耗结构分解
+  // locateCallCount = 非 Assert、非 Sleep、非 Locate 的 step 数
+  // 注意：Midscene 的 yamlFlow 条目全部是 Action Space 类型（Tap/Input），
+  // Locate 任务属于 Planning 层，不单独出现在 yamlFlow 中
+  const locateCallCount = steps.filter(
+    (s) => !s.isAssert && !s.userInstruction.startsWith("等待"),
+  ).length;
+  const assertCallCount = steps.filter((s) => s.isAssert).length;
+  // 平均每次 Locate token（无缓存时）
+  const nonCachedLocateSteps = steps.filter(
+    (s) => s.subTasks > 0 && !s.isAssert && !s.hitByCache && s.usage,
+  );
+  const tokenPerLocate =
+    nonCachedLocateSteps.length > 0
+      ? Math.round(
+          nonCachedLocateSteps.reduce((sum, s) => sum + (s.usage?.totalTokens ?? 0), 0) /
+            nonCachedLocateSteps.length,
+        )
+      : 2836;
+  // 平均每次 Assert token
+  const assertSteps = steps.filter((s) => s.isAssert && s.usage);
+  const tokenPerAssert =
+    assertSteps.length > 0
+      ? Math.round(
+          assertSteps.reduce((sum, s) => sum + (s.usage?.totalTokens ?? 0), 0) / assertSteps.length,
+        )
+      : 3241;
+
+  // 计算耗时结构分解
+  // totalExecutionWallTimeMs = 分步 wallTime 相加（不含 CLI 启动 / 浏览器启动 / 页面加载等开销）
+  // overheadMs = 进程总耗时 - step 执行耗时
+  const totalExecutionWallTimeMs = steps.reduce((sum, s) => sum + s.wallTimeMs, 0);
+  const overheadMs = Math.max(0, totalWallTimeMs - totalExecutionWallTimeMs);
 
   const modelBreakdown = Array.from(modelMap.entries()).map(([key, val]) => {
     const colonIdx = key.indexOf(":");
@@ -510,8 +586,21 @@ export function parseMetricsFromExecutions(params: {
       finishedSteps: passCount,
       failCount,
       skipCount,
+      /** 断言步骤数 */
       assertCount,
       modelBreakdown,
+      /** 估算节省 token（缓存命中时 SDK 不调用 AI，每次 Locate 约 2836 tokens） */
+      estimatedSavedTokens,
+      /** Token 消耗结构分解 */
+      tokenPerLocate,
+      tokenPerAssert,
+      locateCallCount,
+      /** 断言步骤数（同 assertCount，用于 token 分解视角） */
+      assertCallCount,
+      /** 仅 step 执行耗时（分步 wallTime 相加），不含 CLI 启动 / 浏览器启动 / 页面加载等开销 */
+      totalExecutionWallTimeMs,
+      /** 总进程耗时中的非执行开销（totalWallTimeMs - totalExecutionWallTimeMs） */
+      overheadMs,
     },
     steps,
   };

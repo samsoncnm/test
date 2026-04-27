@@ -109,17 +109,22 @@ export function printMetricsSummary(report: MetricsReport, opts?: { reportDir?: 
   console.log(`  AI 推理耗时 ${pc.dim(":")} ${aiTimeS}s`);
   console.log(`  总 Token    ${pc.dim(":")} ${summary.totalTokens.toLocaleString()}`);
 
-  // Explore 脚本缓存：直接从 cache 目录读 .cache.yaml 文件
-  const exploreCacheHits = countExploreCacheHits(report.scriptName);
-
-  if (exploreCacheHits > 0) {
+  // 本次执行缓存命中：来自 execution JSON 的 hitBy 检测
+  if (summary.hitByCacheCount > 0) {
     console.log(
       pc.green(
-        `  脚本缓存    ${pc.dim(":")} 命中 ${exploreCacheHits} 个元素定位（xpath 复用，跳过 AI 规划）`,
+        `  本次执行   ${pc.dim(":")} 命中 ${summary.hitByCacheCount} 个步骤（命中 xpath，跳过 AI 规划）`,
       ),
     );
   }
 
+  // 脚本缓存累计：来自 midscene cache.yaml 文件，跨运行累积
+  const exploreCacheHits = countExploreCacheHits(report.scriptName);
+  if (exploreCacheHits > 0) {
+    console.log(pc.green(`  脚本缓存   ${pc.dim(":")} 累计 ${exploreCacheHits} 个元素定位`));
+  }
+
+  // KV 缓存 token（来自 API 层面的缓存，命中时 API 返回 cachedTokens > 0）
   if (summary.totalCachedTokens > 0) {
     const savings =
       summary.totalTokens > 0
@@ -132,7 +137,7 @@ export function printMetricsSummary(report: MetricsReport, opts?: { reportDir?: 
     );
   }
 
-  if (exploreCacheHits === 0 && summary.totalCachedTokens === 0) {
+  if (summary.hitByCacheCount === 0 && exploreCacheHits === 0 && summary.totalCachedTokens === 0) {
     console.log(pc.dim(`  缓存节省    ${pc.dim(":")} 0`));
   }
   console.log();
@@ -161,8 +166,11 @@ export function printMetricsSummary(report: MetricsReport, opts?: { reportDir?: 
       const tokens = (step.usage?.totalTokens ?? 0) + (step.locateUsage?.totalTokens ?? 0);
       const statusColor = step.status === "finished" ? pc.green("✓") : pc.red("✗");
       const durationS = (step.wallTimeMs / 1000).toFixed(1);
+      // 缓存命中判定：hitByCache=true（本次执行检测到）或无 usage 且耗时短（可能走缓存）
+      const isCached = step.hitByCache || (!step.usage && step.wallTimeMs < 10000);
+      const cachedTag = isCached ? pc.green("  [C]") : "";
       console.log(
-        `    ${statusColor} ${String(i + 1).padStart(2)} | ${truncated.padEnd(32)} | ${durationS.padStart(6)}s | ${String(tokens).padStart(6)} tokens`,
+        `    ${statusColor} ${String(i + 1).padStart(2)} | ${truncated.padEnd(32)} | ${durationS.padStart(6)}s | ${String(tokens).padStart(6)} tokens${cachedTag}`,
       );
     }
     if (report.steps.length > maxShow) {

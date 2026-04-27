@@ -93,7 +93,9 @@ function renderStepRow(
 
   const tokens = step.usage?.totalTokens;
   const isCached = step.hitByCache || (!step.usage && step.wallTimeMs < 10000);
-  const cacheTag = isCached ? `<span class="ml-1 inline-flex items-center gap-0.5 px-1 py-0.5 bg-green-500/20 text-green-300 text-[10px] rounded font-medium">[C]</span>` : "";
+  const cacheTag = isCached
+    ? `<span class="ml-1 inline-flex items-center gap-0.5 px-1 py-0.5 bg-green-500/20 text-green-300 text-[10px] rounded font-medium">[C]</span>`
+    : "";
 
   let html = `
     <tr class="${rowClass} cursor-pointer transition-colors" onclick="toggleRow(this)">

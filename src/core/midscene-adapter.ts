@@ -21,6 +21,8 @@ export interface ExplorationSession {
   latestReportFile?: string;
   /** 是否启用深度定位（deepLocate） */
   deepLocate: boolean;
+  /** 步骤计数器（用于历史压缩间隔控制） */
+  stepCount: number;
 }
 
 export async function createExplorationSession(
@@ -63,6 +65,10 @@ export async function createExplorationSession(
     autoPrintReportMsg: false,
     persistExecutionDump: true,
     cache: { id: "nl-script-explore", strategy: "read-write" },
+    // P1 优化：截图缩放 3 倍（2880x1536 → 960x512），Qwen3-VL token 预计从 ~2800 → ~420
+    screenshotShrinkFactor: SCREENSHOT_SHRINK_FACTOR,
+    // P1 优化：限制重规划次数，避免多次重复 AI 调用
+    replanningCycleLimit: 1,
   });
 
   log("success", "Midscene Agent 初始化完成");
@@ -74,6 +80,7 @@ export async function createExplorationSession(
     headless,
     deepLocate,
     latestReportFile: undefined,
+    stepCount: 0,
     log: {
       startUrl,
       steps: [],
@@ -81,8 +88,26 @@ export async function createExplorationSession(
   };
 }
 
+/** 截图压缩：Qwen3-VL token 公式 ceil(W/28)*ceil(H/28)，shrink=3 将 2880x1536 → 960x512，预计 token 从 ~2800 → ~420 */
+const SCREENSHOT_SHRINK_FACTOR = 3;
+
 export async function executeAndLog(session: ExplorationSession, action: string): Promise<void> {
   const start = Date.now();
+  session.stepCount++;
+
+  // P2 优化：每 5 步压缩一次历史，避免上下文无限增长
+  if (session.stepCount > 0 && session.stepCount % 5 === 0) {
+    try {
+      await (
+        session.agent as unknown as {
+          compressHistory?: (threshold: number, keepCount: number) => Promise<void>;
+        }
+      ).compressHistory?.(3000, 3);
+    } catch {
+      // compressHistory 失败静默跳过
+    }
+  }
+
   try {
     await session.agent.aiAct(action, { deepLocate: session.deepLocate });
 
