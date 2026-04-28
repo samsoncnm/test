@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@midscene/cli": "^1.7.5",
-    "@midscene/core": "^1.7.5",
+    "@midscene/core": "1.7.5",
     "@midscene/web": "^1.7.5",
     "@playwright/test": "^1.49.0",
     "commander": "^12.1.0",

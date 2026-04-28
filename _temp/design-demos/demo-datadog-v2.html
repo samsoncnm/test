@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Report - 账号登录与权限验证</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+    
+    :root {
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+    
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+    }
+    
+    .mono {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+    }
+    
+    .scrollbar-thin::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    
+    .scrollbar-thin::-webkit-scrollbar-track {
+      background: #1e293b;
+    }
+    
+    .scrollbar-thin::-webkit-scrollbar-thumb {
+      background: #475569;
+      border-radius: 3px;
+    }
+    
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+      background: #64748b;
+    }
+    
+    .alert-glow {
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.3), 0 0 40px rgba(239, 68, 68, 0.1);
+    }
+    
+    .row-hover:hover {
+      background: rgba(59, 130, 246, 0.08);
+    }
+    
+    .status-dot {
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .sparkline-bar:hover {
+      filter: brightness(1.3);
+    }
+  </style>
+</head>
+<body class="min-h-screen scrollbar-thin">
+  <!-- Top Toolbar -->
+  <header class="bg-[#1e293b] border-b border-[#334155] px-4 py-2 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+          <i data-lucide="bot" class="w-5 h-5 text-white"></i>
+        </div>
+        <span class="font-semibold text-lg">Test Report</span>
+      </div>
+      
+      <div class="h-6 w-px bg-[#334155]"></div>
+      
+      <div class="flex items-center gap-2">
+        <span class="text-[#94a3b8] text-sm">Script:</span>
+        <button class="flex items-center gap-1 px-3 py-1.5 bg-[#0f172a] rounded border border-[#334155] hover:border-[#475569] transition-colors">
+          <span class="font-medium">账号登录与权限验证</span>
+          <i data-lucide="chevron-down" class="w-4 h-4 text-[#64748b]"></i>
+        </button>
+      </div>
+    </div>
+    
+    <div class="flex items-center gap-3">
+      <div class="relative">
+        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#64748b]"></i>
+        <input type="text" placeholder="Filter steps..." class="pl-9 pr-4 py-1.5 bg-[#0f172a] rounded border border-[#334155] text-sm w-48 focus:outline-none focus:border-blue-500 transition-colors">
+      </div>
+      
+      <button class="flex items-center gap-2 px-3 py-1.5 bg-[#0f172a] rounded border border-[#334155] hover:border-[#475569] transition-colors text-sm">
+        <i data-lucide="filter" class="w-4 h-4"></i>
+        <span>Filter</span>
+      </button>
+      
+      <button class="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium transition-colors">
+        <i data-lucide="download" class="w-4 h-4"></i>
+        <span>Export</span>
+      </button>
+    </div>
+  </header>
+  
+  <!-- Metrics Bar -->
+  <div class="bg-[#1e293b]/80 border-b border-[#334155] px-4 py-3">
+    <div class="flex items-center gap-6">
+      <div class="flex items-center gap-2">
+        <span class="text-[#94a3b8] text-xs uppercase tracking-wider">Total</span>
+        <span class="mono font-semibold text-lg">6</span>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <span class="text-[#94a3b8] text-xs uppercase tracking-wider">Pass</span>
+        <span class="mono font-semibold text-lg text-green-400">4</span>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <span class="text-[#94a3b8] text-xs uppercase tracking-wider">Fail</span>
+        <span class="mono font-semibold text-lg text-red-400">1</span>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <span class="text-[#94a3b8] text-xs uppercase tracking-wider">Skip</span>
+        <span class="mono font-semibold text-lg text-yellow-400">1</span>
+      </div>
+      
+      <div class="h-5 w-px bg-[#334155]"></div>
+      
+      <div class="flex items-center gap-2">
+        <i data-lucide="clock" class="w-4 h-4 text-[#64748b]"></i>
+        <span class="text-[#94a3b8] text-xs">Duration:</span>
+        <span class="mono font-medium text-sm">89.6s</span>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <i data-lucide="cpu" class="w-4 h-4 text-[#64748b]"></i>
+        <span class="text-[#94a3b8] text-xs">AI Time:</span>
+        <span class="mono font-medium text-sm">47.9s</span>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <i data-lucide="coins" class="w-4 h-4 text-[#64748b]"></i>
+        <span class="text-[#94a3b8] text-xs">Tokens:</span>
+        <span class="mono font-medium text-sm">20.1K</span>
+      </div>
+      
+      <div class="flex items-center gap-2">
+        <i data-lucide="zap" class="w-4 h-4 text-[#64748b]"></i>
+        <span class="text-[#94a3b8] text-xs">Model:</span>
+        <span class="mono font-medium text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded">qwen3-vl-plus</span>
+      </div>
+      
+      <div class="ml-auto flex items-center gap-2 text-xs text-[#64748b]">
+        <i data-lucide="calendar" class="w-3 h-3"></i>
+        <span>2026-04-26 18:38:13</span>
+      </div>
+    </div>
+  </div>
+  
+  <main class="p-4 space-y-4">
+    <!-- Alert Panel -->
+    <div class="bg-red-950/50 border-2 border-red-500/80 rounded-lg alert-glow overflow-hidden">
+      <div class="px-4 py-2 bg-red-500/20 border-b border-red-500/30 flex items-center gap-2">
+        <div class="w-2 h-2 bg-red-500 rounded-full status-dot"></div>
+        <span class="font-semibold text-red-300 text-sm uppercase tracking-wider">Alert - Step 3 Failed</span>
+      </div>
+      
+      <div class="p-4">
+        <div class="flex gap-4">
+          <div class="flex-1">
+            <h3 class="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+              <i data-lucide="x-circle" class="w-5 h-5 text-red-400"></i>
+              点击登录按钮
+            </h3>
+            
+            <div class="bg-[#0f172a]/60 rounded border border-red-500/30 p-3 mb-3">
+              <div class="flex items-start gap-2">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-yellow-400 mt-0.5 flex-shrink-0"></i>
+                <div>
+                  <span class="text-red-300 font-medium">TimeoutError: </span>
+                  <span class="text-[#94a3b8]">元素定位超时，无法在10秒内找到「登录按钮」元素，可能页面结构已变化</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="flex gap-2">
+              <button class="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] rounded text-sm transition-colors">
+                <i data-lucide="play" class="w-4 h-4 text-blue-400"></i>
+                <span>Retry Step</span>
+              </button>
+              <button class="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] rounded text-sm transition-colors">
+                <i data-lucide="skip-forward" class="w-4 h-4 text-yellow-400"></i>
+                <span>Skip & Continue</span>
+              </button>
+              <button class="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] rounded text-sm transition-colors">
+                <i data-lucide="wrench" class="w-4 h-4 text-green-400"></i>
+                <span>Suggest Fix</span>
+              </button>
+            </div>
+          </div>
+          
+          <div class="w-80 flex-shrink-0">
+            <div class="text-xs text-[#94a3b8] mb-2 flex items-center gap-1.5">
+              <i data-lucide="image" class="w-3 h-3"></i>
+              <span>Failure Screenshot</span>
+            </div>
+            <div class="relative rounded overflow-hidden border border-red-500/30">
+              <img src="https://picsum.photos/800/500?random=fail1" alt="Failure screenshot" class="w-full h-44 object-cover">
+              <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
+              <div class="absolute bottom-2 left-2 flex items-center gap-1 text-xs text-white/80">
+                <i data-lucide="clock" class="w-3 h-3"></i>
+                <span>15.2s into execution</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Steps Table -->
+    <div class="bg-[#1e293b] rounded-lg border border-[#334155] overflow-hidden">
+      <div class="px-4 py-3 border-b border-[#334155] flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="list" class="w-4 h-4 text-[#64748b]"></i>
+          <span class="font-semibold text-sm">Execution Steps</span>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-[#64748b]">
+          <i data-lucide="info" class="w-3 h-3"></i>
+          <span>Click row to expand details</span>
+        </div>
+      </div>
+      
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-[#0f172a]/50 text-[#94a3b8] text-xs uppercase tracking-wider">
+              <th class="px-3 py-2 text-left font-medium w-12">#</th>
+              <th class="px-3 py-2 text-left font-medium w-20">Status</th>
+              <th class="px-3 py-2 text-left font-medium">Instruction</th>
+              <th class="px-3 py-2 text-right font-medium w-24">Wall Time</th>
+              <th class="px-3 py-2 text-right font-medium w-24">AI Time</th>
+              <th class="px-3 py-2 text-right font-medium w-20">SubTasks</th>
+              <th class="px-3 py-2 text-right font-medium w-20">Tokens</th>
+              <th class="px-3 py-2 text-center font-medium w-16">Action</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-[#334155]/50">
+            <!-- Step 1 - Pass -->
+            <tr class="row-hover cursor-pointer transition-colors">
+              <td class="px-3 py-2.5 mono text-[#64748b] text-xs">1</td>
+              <td class="px-3 py-2.5">
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
+                  <i data-lucide="check" class="w-3 h-3"></i>
+                  Pass
+                </span>
+              </td>
+              <td class="px-3 py-2.5 text-sm">账号输入框，提示文字为"请输入账号/手机号"</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">8.47s</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">7.24s</td>
+              <td class="px-3 py-2.5 text-right mono text-xs text-[#64748b]">2</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">2.9K</td>
+              <td class="px-3 py-2.5 text-center">
+                <button class="p-1 hover:bg-[#334155] rounded transition-colors">
+                  <i data-lucide="chevron-right" class="w-4 h-4 text-[#64748b]"></i>
+                </button>
+              </td>
+            </tr>
+            
+            <!-- Step 2 - Pass -->
+            <tr class="row-hover cursor-pointer transition-colors">
+              <td class="px-3 py-2.5 mono text-[#64748b] text-xs">2</td>
+              <td class="px-3 py-2.5">
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
+                  <i data-lucide="check" class="w-3 h-3"></i>
+                  Pass
+                </span>
+              </td>
+              <td class="px-3 py-2.5 text-sm">密码输入框，提示文字为"请输入密码"</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">9.70s</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">8.42s</td>
+              <td class="px-3 py-2.5 text-right mono text-xs text-[#64748b]">2</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">2.9K</td>
+              <td class="px-3 py-2.5 text-center">
+                <button class="p-1 hover:bg-[#334155] rounded transition-colors">
+                  <i data-lucide="chevron-right" class="w-4 h-4 text-[#64748b]"></i>
+                </button>
+              </td>
+            </tr>
+            
+            <!-- Step 3 - Failed (Highlighted) -->
+            <tr class="bg-red-950/30 border-l-4 border-red-500 cursor-pointer hover:bg-red-950/40 transition-colors">
+              <td class="px-3 py-2.5 mono text-red-400 text-xs font-bold">3</td>
+              <td class="px-3 py-2.5">
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/30 text-red-300 text-xs font-bold border border-red-500/50">
+                  <i data-lucide="x" class="w-3 h-3"></i>
+                  Failed
+                </span>
+              </td>
+              <td class="px-3 py-2.5 text-sm font-medium text-red-200">点击登录按钮</td>
+              <td class="px-3 py-2.5 text-right mono text-xs text-red-300">15.20s</td>
+              <td class="px-3 py-2.5 text-right mono text-xs text-[#64748b]">--</td>
+              <td class="px-3 py-2.5 text-right mono text-xs text-[#64748b]">4</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">5.8K</td>
+              <td class="px-3 py-2.5 text-center">
+                <button class="p-1 hover:bg-red-500/20 rounded transition-colors">
+                  <i data-lucide="chevron-down" class="w-4 h-4 text-red-400"></i>
+                </button>
+              </td>
+            </tr>
+            
+            <!-- Step 3 Expanded Details -->
+            <tr class="bg-[#0f172a]">
+              <td colspan="8" class="px-6 py-4">
+                <div class="grid grid-cols-3 gap-4">
+                  <div class="col-span-2 space-y-3">
+                    <div>
+                      <div class="text-xs text-[#64748b] mb-1">Error Details</div>
+                      <div class="bg-[#1e293b] rounded p-3 border border-red-500/30">
+                        <div class="mono text-sm text-red-300">
+                          <span class="text-red-400">TimeoutError</span>: 元素定位超时，无法在10秒内找到「登录按钮」元素，可能页面结构已变化
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <div class="text-xs text-[#64748b] mb-1">Possible Causes</div>
+                      <ul class="space-y-1 text-xs text-[#94a3b8]">
+                        <li class="flex items-start gap-1.5">
+                          <i data-lucide="arrow-right" class="w-3 h-3 text-yellow-400 mt-0.5 flex-shrink-0"></i>
+                          页面结构变更，按钮选择器已失效
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                          <i data-lucide="arrow-right" class="w-3 h-3 text-yellow-400 mt-0.5 flex-shrink-0"></i>
+                          登录按钮需要滚动才能可见
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                          <i data-lucide="arrow-right" class="w-3 h-3 text-yellow-400 mt-0.5 flex-shrink-0"></i>
+                          按钮在 iframe 内或需要等待动画完成
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div>
+                    <div class="text-xs text-[#64748b] mb-1">Screenshot</div>
+                    <img src="https://picsum.photos/800/500?random=fail1" alt="Failure screenshot" class="w-full rounded border border-[#334155]">
+                  </div>
+                </div>
+              </td>
+            </tr>
+            
+            <!-- Step 4 - Unknown/Skip -->
+            <tr class="row-hover cursor-pointer opacity-70 transition-colors">
+              <td class="px-3 py-2.5 mono text-[#64748b] text-xs">4</td>
+              <td class="px-3 py-2.5">
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 text-xs font-medium">
+                  <i data-lucide="minus" class="w-3 h-3"></i>
+                  Skip
+                </span>
+              </td>
+              <td class="px-3 py-2.5 text-sm">断言左侧菜单出现「内部管理」</td>
+              <td class="px-3 py-2.5 text-right mono text-xs text-[#64748b]">--</td>
+              <td class="px-3 py-2.5 text-right mono text-xs text-[#64748b]">--</td>
+              <td class="px-3 py-2.5 text-right mono text-xs text-[#64748b]">0</td>
+              <td class="px-3 py-2.5 text-right mono text-xs text-[#64748b]">--</td>
+              <td class="px-3 py-2.5 text-center">
+                <button class="p-1 hover:bg-[#334155] rounded transition-colors">
+                  <i data-lucide="chevron-right" class="w-4 h-4 text-[#64748b]"></i>
+                </button>
+              </td>
+            </tr>
+            
+            <!-- Step 5 - Pass -->
+            <tr class="row-hover cursor-pointer transition-colors">
+              <td class="px-3 py-2.5 mono text-[#64748b] text-xs">5</td>
+              <td class="px-3 py-2.5">
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
+                  <i data-lucide="check" class="w-3 h-3"></i>
+                  Pass
+                </span>
+              </td>
+              <td class="px-3 py-2.5 text-sm">点击「内部管理」菜单</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">5.23s</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">4.10s</td>
+              <td class="px-3 py-2.5 text-right mono text-xs text-[#64748b]">2</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">2.9K</td>
+              <td class="px-3 py-2.5 text-center">
+                <button class="p-1 hover:bg-[#334155] rounded transition-colors">
+                  <i data-lucide="chevron-right" class="w-4 h-4 text-[#64748b]"></i>
+                </button>
+              </td>
+            </tr>
+            
+            <!-- Step 6 - Pass -->
+            <tr class="row-hover cursor-pointer transition-colors">
+              <td class="px-3 py-2.5 mono text-[#64748b] text-xs">6</td>
+              <td class="px-3 py-2.5">
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-xs font-medium">
+                  <i data-lucide="check" class="w-3 h-3"></i>
+                  Pass
+                </span>
+              </td>
+              <td class="px-3 py-2.5 text-sm">验证菜单项列表</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">3.89s</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">3.10s</td>
+              <td class="px-3 py-2.5 text-right mono text-xs text-[#64748b]">2</td>
+              <td class="px-3 py-2.5 text-right mono text-xs">2.8K</td>
+              <td class="px-3 py-2.5 text-center">
+                <button class="p-1 hover:bg-[#334155] rounded transition-colors">
+                  <i data-lucide="chevron-right" class="w-4 h-4 text-[#64748b]"></i>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    
+    <!-- History Trend -->
+    <div class="bg-[#1e293b] rounded-lg border border-[#334155] overflow-hidden">
+      <div class="px-4 py-3 border-b border-[#334155] flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="trending-up" class="w-4 h-4 text-[#64748b]"></i>
+          <span class="font-semibold text-sm">Execution History</span>
+        </div>
+        <div class="flex items-center gap-4 text-xs text-[#64748b]">
+          <span class="flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-green-500"></span>
+            Pass
+          </span>
+          <span class="flex items-center gap-1">
+            <span class="w-2 h-2 rounded-full bg-red-500"></span>
+            Fail
+          </span>
+          <span class="text-[#475569]">Last 10 runs</span>
+        </div>
+      </div>
+      
+      <div class="p-4">
+        <div class="flex items-end justify-between gap-2 h-24">
+          <!-- Run 1 -->
+          <div class="flex flex-col items-center gap-1 flex-1">
+            <div class="w-full flex flex-col items-center gap-0.5">
+              <div class="w-8 bg-green-500/80 rounded-t sparkline-bar cursor-pointer" style="height: 80px;"></div>
+            </div>
+            <span class="text-xs text-[#64748b] mono">#10</span>
+            <span class="text-xs text-green-400">100%</span>
+          </div>
+          
+          <!-- Run 2 -->
+          <div class="flex flex-col items-center gap-1 flex-1">
+            <div class="w-full flex flex-col items-center gap-0.5">
+              <div class="w-8 bg-green-500/80 rounded-t sparkline-bar cursor-pointer" style="height: 72px;"></div>
+            </div>
+            <span class="text-xs text-[#64748b] mono">#9</span>
+            <span class="text-xs text-green-400">83%</span>
+          </div>
+          
+          <!-- Run 3 -->
+          <div class="flex flex-col items-center gap-1 flex-1">
+            <div class="w-full flex flex-col items-center gap-0.5">
+              <div class="w-8 bg-green-500/80 rounded-t sparkline-bar cursor-pointer" style="height: 68px;"></div>
+            </div>
+            <span class="text-xs text-[#64748b] mono">#8</span>
+            <span class="text-xs text-green-400">80%</span>
+          </div>
+          
+          <!-- Run 4 -->
+          <div class="flex flex-col items-center gap-1 flex-1">
+            <div class="w-full flex flex-col items-center gap-0.5">
+              <div class="w-8 bg-green-500/80 rounded-t sparkline-bar cursor-pointer" style="height: 90px;"></div>
+            </div>
+            <span class="text-xs text-[#64748b] mono">#7</span>
+            <span class="text-xs text-green-400">100%</span>
+          </div>
+          
+          <!-- Run 5 -->
+          <div class="flex flex-col items-center gap-1 flex-1">
+            <div class="w-full flex flex-col items-center gap-0.5">
+              <div class="w-8 bg-green-500/80 rounded-t sparkline-bar cursor-pointer" style="height: 76px;"></div>
+            </div>
+            <span class="text-xs text-[#64748b] mono">#6</span>
+            <span class="text-xs text-green-400">100%</span>
+          </div>
+          
+          <!-- Run 6 - Fail -->
+          <div class="flex flex-col items-center gap-1 flex-1">
+            <div class="w-full flex flex-col items-center gap-0.5">
+              <div class="w-8 bg-red-500/80 rounded-t sparkline-bar cursor-pointer" style="height: 48px;"></div>
+              <div class="w-5 bg-yellow-500/60 rounded-b" style="height: 24px;"></div>
+            </div>
+            <span class="text-xs text-[#64748b] mono">#5</span>
+            <span class="text-xs text-red-400">67%</span>
+          </div>
+          
+          <!-- Run 7 -->
+          <div class="flex flex-col items-center gap-1 flex-1">
+            <div class="w-full flex flex-col items-center gap-0.5">
+              <div class="w-8 bg-green-500/80 rounded-t sparkline-bar cursor-pointer" style="height: 85px;"></div>
+            </div>
+            <span class="text-xs text-[#64748b] mono">#4</span>
+            <span class="text-xs text-green-400">100%</span>
+          </div>
+          
+          <!-- Run 8 -->
+          <div class="flex flex-col items-center gap-1 flex-1">
+            <div class="w-full flex flex-col items-center gap-0.5">
+              <div class="w-8 bg-green-500/80 rounded-t sparkline-bar cursor-pointer" style="height: 70px;"></div>
+            </div>
+            <span class="text-xs text-[#64748b] mono">#3</span>
+            <span class="text-xs text-green-400">100%</span>
+          </div>
+          
+          <!-- Run 9 -->
+          <div class="flex flex-col items-center gap-1 flex-1">
+            <div class="w-full flex flex-col items-center gap-0.5">
+              <div class="w-8 bg-green-500/80 rounded-t sparkline-bar cursor-pointer" style="height: 82px;"></div>
+            </div>
+            <span class="text-xs text-[#64748b] mono">#2</span>
+            <span class="text-xs text-green-400">100%</span>
+          </div>
+          
+          <!-- Run 10 - Current -->
+          <div class="flex flex-col items-center gap-1 flex-1">
+            <div class="w-full flex flex-col items-center gap-0.5 relative">
+              <div class="w-8 bg-red-500/80 rounded-t sparkline-bar cursor-pointer" style="height: 56px;"></div>
+              <div class="w-5 bg-yellow-500/60 rounded-b" style="height: 28px;"></div>
+              <div class="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full"></div>
+            </div>
+            <span class="text-xs text-blue-400 font-bold mono">#1</span>
+            <span class="text-xs text-yellow-400">Current</span>
+          </div>
+        </div>
+        
+        <div class="mt-4 pt-4 border-t border-[#334155] flex items-center justify-between text-xs text-[#64748b]">
+          <div class="flex items-center gap-4">
+            <span>Avg Pass Rate: <span class="text-green-400 mono font-medium">93.3%</span></span>
+            <span>Avg Duration: <span class="mono font-medium">82.4s</span></span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="flex items-center gap-1 text-green-400">
+              <i data-lucide="arrow-up" class="w-3 h-3"></i>
+              4 consecutive passes before this failure
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Token Usage Breakdown -->
+    <div class="bg-[#1e293b] rounded-lg border border-[#334155] overflow-hidden">
+      <div class="px-4 py-3 border-b border-[#334155] flex items-center gap-2">
+        <i data-lucide="bar-chart-2" class="w-4 h-4 text-[#64748b]"></i>
+        <span class="font-semibold text-sm">Token Usage Breakdown</span>
+      </div>
+      
+      <div class="p-4">
+        <div class="grid grid-cols-4 gap-4">
+          <div class="bg-[#0f172a] rounded p-3 border border-[#334155]">
+            <div class="text-xs text-[#64748b] mb-1">Total Tokens</div>
+            <div class="text-2xl font-bold mono text-white">20,123</div>
+            <div class="text-xs text-[#64748b] mt-1">across 6 steps</div>
+          </div>
+          
+          <div class="bg-[#0f172a] rounded p-3 border border-[#334155]">
+            <div class="text-xs text-[#64748b] mb-1">Cached Tokens</div>
+            <div class="text-2xl font-bold mono text-[#64748b]">0</div>
+            <div class="text-xs text-red-400 mt-1">Cache miss rate: 100%</div>
+          </div>
+          
+          <div class="bg-[#0f172a] rounded p-3 border border-[#334155]">
+            <div class="text-xs text-[#64748b] mb-1">Avg per Step</div>
+            <div class="text-2xl font-bold mono text-blue-400">3.4K</div>
+            <div class="text-xs text-[#64748b] mt-1">tokens/step</div>
+          </div>
+          
+          <div class="bg-[#0f172a] rounded p-3 border border-[#334155]">
+            <div class="text-xs text-[#64748b] mb-1">Cost Estimate</div>
+            <div class="text-2xl font-bold mono text-purple-400">~$0.12</div>
+            <div class="text-xs text-[#64748b] mt-1">qwen3-vl-plus</div>
+          </div>
+        </div>
+        
+        <!-- Token bar chart -->
+        <div class="mt-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-xs text-[#64748b]">Step token distribution</span>
+          </div>
+          <div class="h-6 bg-[#0f172a] rounded overflow-hidden flex">
+            <div class="bg-blue-500/70 h-full" style="width: 14.3%;" title="Step 1: 2,876 tokens"></div>
+            <div class="bg-blue-500/60 h-full" style="width: 14.3%;" title="Step 2: 2,873 tokens"></div>
+            <div class="bg-red-500/80 h-full" style="width: 28.6%;" title="Step 3: 5,756 tokens"></div>
+            <div class="bg-yellow-500/50 h-full" style="width: 0%;" title="Step 4: 0 tokens"></div>
+            <div class="bg-blue-500/65 h-full" style="width: 14.4%;" title="Step 5: 2,900 tokens"></div>
+            <div class="bg-blue-500/55 h-full" style="width: 13.9%;" title="Step 6: 2,800 tokens"></div>
+          </div>
+          <div class="flex justify-between mt-1 text-xs text-[#64748b]">
+            <span class="flex items-center gap-1">
+              <span class="w-2 h-2 bg-blue-500/70 rounded"></span> Passed
+            </span>
+            <span class="flex items-center gap-1">
+              <span class="w-2 h-2 bg-red-500/80 rounded"></span> Failed
+            </span>
+            <span class="flex items-center gap-1">
+              <span class="w-2 h-2 bg-yellow-500/50 rounded"></span> Skipped
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  
+  <!-- Footer -->
+  <footer class="bg-[#1e293b] border-t border-[#334155] px-4 py-2 flex items-center justify-between text-xs text-[#64748b]">
+    <div class="flex items-center gap-4">
+      <span>Generated by Midscene AI</span>
+      <span>v1.2.4</span>
+    </div>
+    <div class="flex items-center gap-4">
+      <span class="flex items-center gap-1">
+        <i data-lucide="file-text" class="w-3 h-3"></i>
+        JSON Report
+      </span>
+      <span class="flex items-center gap-1">
+        <i data-lucide="share-2" class="w-3 h-3"></i>
+        Share
+      </span>
+    </div>
+  </footer>
+
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>

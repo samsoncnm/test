@@ -1,33 +1,149 @@
-/**
- * Midscene 报告解析器
- * 使用 splitReportFile 解析 HTML 报告，提取 execution JSON 中的 yamlFlow 数据和 metrics 数据
- */
-
-/**
- * Midscene 报告解析器
- * 从 .execution.json 文件提取 metrics 数据，避免重复解析 80MB+ 的 HTML 报告文件。
- */
-
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
 import * as path from "node:path";
 import type { MetricsReport, ParsedExecution, StepMetrics, TaskUsage } from "../types/index.js";
 
-/** 用于在 ESM 上下文中加载 CommonJS 模块（如 @midscene/core） */
 const _require = createRequire(import.meta.url);
 
+// Midscene 转义规则：HTML 中 < > 被替换为 __midscene_lt__ __midscene_gt__
+function antiEscapeScriptTag(html: string): string {
+  return html.replace(/__midscene_lt__/g, "<").replace(/__midscene_gt__/g, ">");
+}
+
 /**
- * 解析 Midscene HTML 报告文件，提取所有 execution 数据
- *
- * 核心逻辑：
- * 1. 扫描 reportDir 下已有的 *.execution.json 文件（Midscene 通过 splitReportFile 生成）
- * 2. 若已存在，直接读取（< 1 秒）
- * 3. 若不存在，调用 splitReportFile 生成（首次运行或文件被清理时，约 90 秒）
- * 4. splitReportFile 生成的文件为 1.execution.json, 2.execution.json...，而非 {htmlName}.html.execution.json
- *
- * @param htmlPath - Midscene HTML 报告文件路径
- * @returns 解析后的 execution 列表及 SDK 版本号
+ * 从 HTML 尾部增量提取本次运行的 execution 数据。
+ * Midscene 按时间顺序追加 dump script 到 HTML 尾部，本次运行的数据在文件末尾。
+ * 只读取尾部 ~2-8MB（而非全量 90MB），只处理 logTime >= minLogTime 的 execution。
  */
+function extractRecentExecutions(
+  htmlPath: string,
+  minLogTime: number,
+): { executions: Record<string, unknown>[]; sdkVersion: string } | null {
+  const INITIAL_TAIL_SIZE = 2 * 1024 * 1024; // 2MB
+  const MAX_TAIL_SIZE = 16 * 1024 * 1024; // 16MB
+  const fileSize = fs.statSync(htmlPath).size;
+  if (fileSize === 0) return null;
+
+  const screenshotsDir = path.join(path.dirname(htmlPath), "screenshots");
+
+  for (let tailSize = INITIAL_TAIL_SIZE; tailSize <= MAX_TAIL_SIZE; tailSize *= 2) {
+    const readSize = Math.min(tailSize, fileSize);
+    const startOffset = fileSize - readSize;
+
+    const fd = fs.openSync(htmlPath, "r");
+    const buffer = Buffer.alloc(readSize);
+    fs.readSync(fd, buffer, 0, readSize, startOffset);
+    fs.closeSync(fd);
+
+    const tail = buffer.toString("utf-8");
+
+    // 收集尾部 buffer 中的 midscene-image 标签（截图 base64 数据）
+    const imageMap = new Map<string, string>();
+    const imageTagRe = /<script type="midscene-image" data-id="([^"]+)">([\s\S]*?)<\/script>/g;
+    let imgMatch: RegExpExecArray | null;
+    while ((imgMatch = imageTagRe.exec(tail)) !== null) {
+      const id = imgMatch[1];
+      const data = imgMatch[2];
+      if (id && data) imageMap.set(id, antiEscapeScriptTag(data.trim()));
+    }
+
+    // 提取 midscene_web_dump 标签
+    const dumpTagRe =
+      /<script type="midscene_web_dump"[^>]*>([\s\S]*?)<\/script>/g;
+    const matchedExecutions: Record<string, unknown>[] = [];
+    let sdkVersion = "unknown";
+    let foundAnyDump = false;
+
+    let dumpMatch: RegExpExecArray | null;
+    while ((dumpMatch = dumpTagRe.exec(tail)) !== null) {
+      foundAnyDump = true;
+      const content = dumpMatch[1] ? antiEscapeScriptTag(dumpMatch[1].trim()) : "";
+      if (!content) continue;
+
+      let dump: Record<string, unknown>;
+      try {
+        dump = JSON.parse(content);
+      } catch {
+        continue;
+      }
+
+      if (sdkVersion === "unknown" && dump.sdkVersion) {
+        sdkVersion = dump.sdkVersion as string;
+      }
+
+      const executions = dump.executions as Record<string, unknown>[] | undefined;
+      if (!executions) continue;
+
+      for (const exec of executions) {
+        const logTime = exec.logTime as number | undefined;
+        if (logTime !== undefined && logTime >= minLogTime) {
+          externalizeScreenshots(exec, screenshotsDir, htmlPath, imageMap);
+          matchedExecutions.push(exec);
+        }
+      }
+    }
+
+    if (matchedExecutions.length > 0) {
+      return { executions: matchedExecutions, sdkVersion };
+    }
+
+    if (foundAnyDump) return null;
+
+    if (readSize >= fileSize) return null;
+  }
+
+  return null;
+}
+
+/**
+ * 将 execution 中的 inline 截图引用转为文件引用。
+ * 优先使用已有的截图文件，其次从 HTML 尾部 buffer 中提取 base64 数据写入文件。
+ */
+function externalizeScreenshots(
+  node: unknown,
+  screenshotsDir: string,
+  _htmlPath: string,
+  imageMap: Map<string, string>,
+): void {
+  if (Array.isArray(node)) {
+    for (const item of node) externalizeScreenshots(item, screenshotsDir, _htmlPath, imageMap);
+    return;
+  }
+  if (typeof node !== "object" || node === null) return;
+
+  const record = node as Record<string, unknown>;
+  if (
+    record.type === "midscene_screenshot_ref" &&
+    typeof record.id === "string" &&
+    record.storage === "inline" &&
+    (record.mimeType === "image/png" || record.mimeType === "image/jpeg")
+  ) {
+    const ext = record.mimeType === "image/jpeg" ? "jpeg" : "png";
+    const fileName = `${record.id}.${ext}`;
+    const relativePath = `./screenshots/${fileName}`;
+    const absolutePath = path.join(screenshotsDir, fileName);
+
+    if (!fs.existsSync(absolutePath)) {
+      const dataUri = imageMap.get(record.id as string);
+      if (dataUri) {
+        fs.mkdirSync(screenshotsDir, { recursive: true });
+        const rawBase64 = dataUri.replace(/^data:image\/[a-zA-Z+]+;base64,/, "");
+        fs.writeFileSync(absolutePath, Buffer.from(rawBase64, "base64"));
+      }
+    }
+
+    if (fs.existsSync(absolutePath)) {
+      record.storage = "file";
+      record.path = relativePath;
+    }
+    return;
+  }
+
+  for (const value of Object.values(record)) {
+    externalizeScreenshots(value, screenshotsDir, _htmlPath, imageMap);
+  }
+}
+
 export function parseReportFile(
   htmlPath: string,
   options?: { scriptStartTime?: number },
@@ -39,30 +155,37 @@ export function parseReportFile(
     return { executions: [], sdkVersion: "unknown" };
   }
 
-  const outputDir = path.dirname(htmlPath);
+  const minLogTime = options?.scriptStartTime ?? 0;
 
-  // 扫描 outputDir 中已有的 .execution.json 文件（splitReportHtmlByExecution 生成的）
-  // 注意：文件名是 1.execution.json, 2.execution.json...，不是 {htmlName}.html.execution.json
+  // 增量路径：scriptStartTime 存在时，从 HTML 尾部直接提取本次运行的 execution
+  if (minLogTime > 0) {
+    const result = extractRecentExecutions(htmlPath, minLogTime);
+    if (result && result.executions.length > 0) {
+      return {
+        executions: rawExecutionsToParseResult(result.executions),
+        sdkVersion: result.sdkVersion,
+      };
+    }
+  }
+
+  // Fallback：全量解析（首次运行、无 scriptStartTime、或增量提取失败）
+  const outputDir = path.dirname(htmlPath);
   let executionJsonFiles: string[];
   const existingFiles = fs.readdirSync(outputDir).filter((f) => /^\d+\.execution\.json$/.test(f));
 
   if (existingFiles.length > 0) {
-    // 检查缓存是否有效：若 JSON 文件全部早于 HTML 文件，说明 HTML 有新追加数据，需重新生成
     const htmlMtime = fs.statSync(htmlPath).mtimeMs;
     const jsonMtimeMax = existingFiles.reduce((max, f) => {
       return Math.max(max, fs.statSync(path.join(outputDir, f)).mtimeMs);
     }, 0);
 
     if (jsonMtimeMax >= htmlMtime) {
-      // 缓存有效：JSON 文件与 HTML 同步，直接使用
       executionJsonFiles = existingFiles.map((f) => path.join(outputDir, f)).sort();
     } else {
-      // 缓存过期：HTML 在 JSON 生成后有追加数据，重新生成
       const result = splitReportFileWithTimeout({ htmlPath, outputDir }, 300000);
       executionJsonFiles = result.executionJsonFiles;
     }
   } else {
-    // 无 JSON 文件时，调用 splitReportHtmlByExecution 生成（约 90 秒，罕见路径）
     const result = splitReportFileWithTimeout({ htmlPath, outputDir }, 300000);
     executionJsonFiles = result.executionJsonFiles;
   }
@@ -70,18 +193,9 @@ export function parseReportFile(
   const executions: ParsedExecution[] = [];
   let sdkVersion = "unknown";
 
-  // 使用 scriptStartTime 过滤：只保留 logTime >= scriptStartTime 的 executions
-  // 这解决了 HTML 报告包含历史 executions 导致 metrics 混入旧数据的问题
-  // midscene_run 目录下同一脚本的 HTML 报告会追加所有历史 executions，
-  // 而旧 executions 的 logTime 远早于当前 scriptStartTime
-  const minLogTime = options?.scriptStartTime ?? 0;
-
   for (const jsonFile of executionJsonFiles) {
-    if (!fs.existsSync(jsonFile)) {
-      continue;
-    }
+    if (!fs.existsSync(jsonFile)) continue;
 
-    // 只从第一个文件提取 sdkVersion
     if (sdkVersion === "unknown") {
       const rawMeta = JSON.parse(fs.readFileSync(jsonFile, "utf-8"));
       sdkVersion = (rawMeta.sdkVersion as string) ?? "unknown";
@@ -92,12 +206,7 @@ export function parseReportFile(
 
     for (const exec of executionList) {
       const execLogTime = exec.logTime as number | undefined;
-
-      // 过滤：跳过 logTime 早于 scriptStartTime 的旧 executions
-      // 对于无 scriptStartTime 的调用（向后兼容），不过滤
-      if (minLogTime > 0 && execLogTime !== undefined && execLogTime < minLogTime) {
-        continue;
-      }
+      if (minLogTime > 0 && execLogTime !== undefined && execLogTime < minLogTime) continue;
 
       const taskList = exec.tasks ?? [];
       const execId = exec.id ?? "";
@@ -105,9 +214,6 @@ export function parseReportFile(
       for (const task of taskList) {
         const output = task.output ?? {};
         const param = task.param ?? {};
-
-        // 跳过 Plan 类型（只有 yamlFlow 非空时才记录）
-        // 优先提取 yamlFlow，其次提取 actions，最后降级
         const yamlFlow = output.yamlFlow as ParsedExecution["yamlFlow"];
         const actions = output.actions as ParsedExecution["actions"];
 
@@ -146,53 +252,63 @@ export function parseReportFile(
   return { executions, sdkVersion };
 }
 
-/**
- * 带超时的 splitReportFile 调用
- * splitReportFile 在 84MB HTML 上需要约 90 秒，因此超时设置为 5 分钟
- * @param params splitReportFile 参数
- * @param timeoutMs 超时毫秒数
- */
+/** 将从 HTML 直接提取的 raw execution 对象转为 ParsedExecution[] */
+function rawExecutionsToParseResult(rawExecs: Record<string, unknown>[]): ParsedExecution[] {
+  const executions: ParsedExecution[] = [];
+  for (const exec of rawExecs) {
+    const taskList = (exec.tasks ?? []) as Record<string, unknown>[];
+    const execId = (exec.id ?? "") as string;
+    const execLogTime = exec.logTime as number | undefined;
+
+    for (const task of taskList) {
+      const output = (task.output ?? {}) as Record<string, unknown>;
+      const param = (task.param ?? {}) as Record<string, unknown>;
+      const yamlFlow = output.yamlFlow as ParsedExecution["yamlFlow"];
+      const actions = output.actions as ParsedExecution["actions"];
+
+      executions.push({
+        executionId: execId,
+        executionLogTime: execLogTime,
+        taskName: (exec.name ?? "") as string,
+        subType: (task.subType ?? "") as string,
+        userInstruction: (param.userInstruction ?? "") as string,
+        status: (task.status ?? "") as string,
+        durationMs: ((task.timing as Record<string, unknown>)?.cost ?? 0) as number,
+        actions,
+        yamlFlow: (yamlFlow as unknown[])?.length ? yamlFlow : undefined,
+        outputOutput: (output.output as string) ?? undefined,
+        shouldContinuePlanning: (output.shouldContinuePlanning as boolean) ?? undefined,
+        _rawTask: {
+          status: task.status,
+          subType: task.subType,
+          param: task.param,
+          timing: task.timing,
+          usage: task.usage,
+          searchAreaUsage: task.searchAreaUsage,
+          output: task.output,
+          recorder: task.recorder,
+          uiContext: task.uiContext,
+          log: task.log,
+          error: task.error,
+          errorMessage: task.errorMessage,
+          errorStack: task.errorStack,
+        } as unknown as Record<string, unknown>,
+      });
+    }
+  }
+  return executions;
+}
+
 function splitReportFileWithTimeout(
   params: { htmlPath: string; outputDir: string },
-  timeoutMs: number,
+  _timeoutMs: number,
 ): { executionJsonFiles: string[] } {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { splitReportHtmlByExecution } = _require("@midscene/core") as {
     splitReportHtmlByExecution: (params: { htmlPath: string; outputDir: string }) => {
       executionJsonFiles: string[];
     };
   };
   return splitReportHtmlByExecution(params);
-}
-
-/**
- * 等待 .execution.json 文件稳定（文件存在 + 大小 > 0 + 修改时间距今 > 500ms）
- * 用于 run 模式：midscene CLI 退出后文件可能还在写入
- *
- * 注意：waitForExecutionJson 等待由 splitReportHtmlByExecution 生成的文件，
- *       文件格式为 N.execution.json（编号格式），而非 {htmlName}.html.execution.json
- */
-export async function waitForExecutionJson(
-  reportDir: string,
-  _htmlFileName: string,
-  timeoutMs = 3000,
-): Promise<void> {
-  const start = Date.now();
-
-  while (Date.now() - start < timeoutMs) {
-    const files = fs.readdirSync(reportDir).filter((f) => /^\d+\.execution\.json$/.test(f));
-    if (files.length > 0) {
-      // 找到至少一个 N.execution.json 文件，检查是否稳定
-      const allStable = files.every((f) => {
-        const stat = fs.statSync(path.join(reportDir, f));
-        return stat.size > 0 && Date.now() - stat.mtimeMs > 500;
-      });
-      if (allStable) {
-        return;
-      }
-    }
-    await new Promise((r) => setTimeout(r, 200));
-  }
 }
 
 /** 按 Midscene 执行阶段归一化分组（同 phase 的重复 execution 合并）
@@ -601,7 +717,6 @@ export function parseMetricsFromExecutions(params: {
   const locateCallCount = steps.filter(
     (s) => !s.isAssert && !s.userInstruction.startsWith("等待"),
   ).length;
-  const assertCallCount = steps.filter((s) => s.isAssert).length;
   // 平均每次 Locate token（无缓存时）
   const nonCachedLocateSteps = steps.filter(
     (s) => s.subTasks > 0 && !s.isAssert && !s.hitByCache && s.usage,
@@ -666,8 +781,6 @@ export function parseMetricsFromExecutions(params: {
       tokenPerLocate,
       tokenPerAssert,
       locateCallCount,
-      /** 断言步骤数（同 assertCount，用于 token 分解视角） */
-      assertCallCount,
       /** 仅 step 执行耗时（分步 wallTime 相加），不含 CLI 启动 / 浏览器启动 / 页面加载等开销 */
       totalExecutionWallTimeMs,
       /** 总进程耗时中的非执行开销（totalWallTimeMs - totalExecutionWallTimeMs） */

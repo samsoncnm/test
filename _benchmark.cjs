@@ -1,0 +1,10 @@
+"use strict";
+const path = require("path");
+const { createRequire } = require("module");
+const r = createRequire(__filename);
+const htmlPath = path.join(process.cwd(), "midscene_run/report/\u8D26\u53F7\u767B\u5F55\u9A8C\u8BC1.html");
+const outDir = path.join(process.cwd(), "midscene_run/report/_baseline_cache");
+const { splitReportHtmlByExecution } = r("@midscene/core");
+const t0 = Date.now();
+splitReportHtmlByExecution({ htmlPath, outputDir: outDir });
+console.log("elapsed_ms=" + (Date.now() - t0));
