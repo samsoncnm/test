@@ -48,9 +48,11 @@ function extractRecentExecutions(
     }
 
     // 提取 midscene_web_dump 标签
+    // Midscene 每次状态变化都追加一个 dump 快照，同一个 execution 会出现多次
+    // 用 Map 去重，后出现的覆盖先出现的（最终状态）
     const dumpTagRe =
       /<script type="midscene_web_dump"[^>]*>([\s\S]*?)<\/script>/g;
-    const matchedExecutions: Record<string, unknown>[] = [];
+    const execMap = new Map<string, Record<string, unknown>>();
     let sdkVersion = "unknown";
     let foundAnyDump = false;
 
@@ -77,14 +79,16 @@ function extractRecentExecutions(
       for (const exec of executions) {
         const logTime = exec.logTime as number | undefined;
         if (logTime !== undefined && logTime >= minLogTime) {
+          const execId = exec.id as string | undefined;
+          const key = execId ?? `${exec.name}|${logTime}`;
           externalizeScreenshots(exec, screenshotsDir, htmlPath, imageMap);
-          matchedExecutions.push(exec);
+          execMap.set(key, exec);
         }
       }
     }
 
-    if (matchedExecutions.length > 0) {
-      return { executions: matchedExecutions, sdkVersion };
+    if (execMap.size > 0) {
+      return { executions: Array.from(execMap.values()), sdkVersion };
     }
 
     if (foundAnyDump) return null;
