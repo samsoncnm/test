@@ -1,9 +1,9 @@
 /**
  * 报告解析子进程入口（TypeScript）
- * 由主进程通过 tsx fork 启动，独立完成耗时的 metrics/HTML 报告生成
+ * 由主进程通过 tsx spawn 启动，独立完成耗时的 metrics/HTML 报告生成
  *
- * 通过 fork() + tsx 启动，与主进程完全隔离
- * 解析结果写入 JSON 文件供主进程读取（stdout 传路径）
+ * 通过 spawn() + detached + tsx 启动，与主进程完全隔离
+ * 解析结果写入 JSON 文件供主进程读取
  */
 
 import { existsSync, writeFileSync } from "node:fs";

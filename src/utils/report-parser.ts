@@ -3,13 +3,27 @@
  * 使用 splitReportFile 解析 HTML 报告，提取 execution JSON 中的 yamlFlow 数据和 metrics 数据
  */
 
+/**
+ * Midscene 报告解析器
+ * 从 .execution.json 文件提取 metrics 数据，避免重复解析 80MB+ 的 HTML 报告文件。
+ */
+
 import * as fs from "node:fs";
+import { createRequire } from "node:module";
 import * as path from "node:path";
-import { splitReportFile } from "@midscene/core";
 import type { MetricsReport, ParsedExecution, StepMetrics, TaskUsage } from "../types/index.js";
+
+/** 用于在 ESM 上下文中加载 CommonJS 模块（如 @midscene/core） */
+const _require = createRequire(import.meta.url);
 
 /**
  * 解析 Midscene HTML 报告文件，提取所有 execution 数据
+ *
+ * 核心逻辑：
+ * 1. 扫描 reportDir 下已有的 *.execution.json 文件（Midscene 通过 splitReportFile 生成）
+ * 2. 若已存在，直接读取（< 1 秒）
+ * 3. 若不存在，调用 splitReportFile 生成（首次运行或文件被清理时，约 90 秒）
+ * 4. splitReportFile 生成的文件为 1.execution.json, 2.execution.json...，而非 {htmlName}.html.execution.json
  *
  * @param htmlPath - Midscene HTML 报告文件路径
  * @returns 解析后的 execution 列表及 SDK 版本号
@@ -27,8 +41,31 @@ export function parseReportFile(
 
   const outputDir = path.dirname(htmlPath);
 
-  // splitReportFile 是同步函数，会在 outputDir 下生成 .execution.json 文件
-  const result = splitReportFile({ htmlPath, outputDir });
+  // 扫描 outputDir 中已有的 .execution.json 文件（splitReportHtmlByExecution 生成的）
+  // 注意：文件名是 1.execution.json, 2.execution.json...，不是 {htmlName}.html.execution.json
+  let executionJsonFiles: string[];
+  const existingFiles = fs.readdirSync(outputDir).filter((f) => /^\d+\.execution\.json$/.test(f));
+
+  if (existingFiles.length > 0) {
+    // 检查缓存是否有效：若 JSON 文件全部早于 HTML 文件，说明 HTML 有新追加数据，需重新生成
+    const htmlMtime = fs.statSync(htmlPath).mtimeMs;
+    const jsonMtimeMax = existingFiles.reduce((max, f) => {
+      return Math.max(max, fs.statSync(path.join(outputDir, f)).mtimeMs);
+    }, 0);
+
+    if (jsonMtimeMax >= htmlMtime) {
+      // 缓存有效：JSON 文件与 HTML 同步，直接使用
+      executionJsonFiles = existingFiles.map((f) => path.join(outputDir, f)).sort();
+    } else {
+      // 缓存过期：HTML 在 JSON 生成后有追加数据，重新生成
+      const result = splitReportFileWithTimeout({ htmlPath, outputDir }, 300000);
+      executionJsonFiles = result.executionJsonFiles;
+    }
+  } else {
+    // 无 JSON 文件时，调用 splitReportHtmlByExecution 生成（约 90 秒，罕见路径）
+    const result = splitReportFileWithTimeout({ htmlPath, outputDir }, 300000);
+    executionJsonFiles = result.executionJsonFiles;
+  }
 
   const executions: ParsedExecution[] = [];
   let sdkVersion = "unknown";
@@ -39,7 +76,7 @@ export function parseReportFile(
   // 而旧 executions 的 logTime 远早于当前 scriptStartTime
   const minLogTime = options?.scriptStartTime ?? 0;
 
-  for (const jsonFile of result.executionJsonFiles) {
+  for (const jsonFile of executionJsonFiles) {
     if (!fs.existsSync(jsonFile)) {
       continue;
     }
@@ -110,21 +147,47 @@ export function parseReportFile(
 }
 
 /**
+ * 带超时的 splitReportFile 调用
+ * splitReportFile 在 84MB HTML 上需要约 90 秒，因此超时设置为 5 分钟
+ * @param params splitReportFile 参数
+ * @param timeoutMs 超时毫秒数
+ */
+function splitReportFileWithTimeout(
+  params: { htmlPath: string; outputDir: string },
+  timeoutMs: number,
+): { executionJsonFiles: string[] } {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { splitReportHtmlByExecution } = _require("@midscene/core") as {
+    splitReportHtmlByExecution: (params: { htmlPath: string; outputDir: string }) => {
+      executionJsonFiles: string[];
+    };
+  };
+  return splitReportHtmlByExecution(params);
+}
+
+/**
  * 等待 .execution.json 文件稳定（文件存在 + 大小 > 0 + 修改时间距今 > 500ms）
  * 用于 run 模式：midscene CLI 退出后文件可能还在写入
+ *
+ * 注意：waitForExecutionJson 等待由 splitReportHtmlByExecution 生成的文件，
+ *       文件格式为 N.execution.json（编号格式），而非 {htmlName}.html.execution.json
  */
 export async function waitForExecutionJson(
   reportDir: string,
-  htmlFileName: string,
+  _htmlFileName: string,
   timeoutMs = 3000,
 ): Promise<void> {
   const start = Date.now();
-  const expectedJson = path.join(reportDir, `${htmlFileName}.execution.json`);
 
   while (Date.now() - start < timeoutMs) {
-    if (fs.existsSync(expectedJson)) {
-      const stat = fs.statSync(expectedJson);
-      if (stat.size > 0 && Date.now() - stat.mtimeMs > 500) {
+    const files = fs.readdirSync(reportDir).filter((f) => /^\d+\.execution\.json$/.test(f));
+    if (files.length > 0) {
+      // 找到至少一个 N.execution.json 文件，检查是否稳定
+      const allStable = files.every((f) => {
+        const stat = fs.statSync(path.join(reportDir, f));
+        return stat.size > 0 && Date.now() - stat.mtimeMs > 500;
+      });
+      if (allStable) {
         return;
       }
     }

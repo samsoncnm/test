@@ -65,8 +65,9 @@ program
       });
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);
-      process.exitCode = 1;
+      process.exit(1);
     }
+    process.exit(0);
   });
 
 // report 子命令

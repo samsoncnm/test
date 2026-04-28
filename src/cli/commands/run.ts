@@ -4,12 +4,12 @@
  *
  * 架构说明：
  * 主进程：负责启动 Midscene CLI，等待其退出后立即 resolve/reject（< 1s）
- * 报告解析子进程：通过 fork() 启动，独立完成耗时的 metrics/HTML 报告生成
+ * 报告解析子进程：通过 spawn() + detached 启动，独立完成耗时的 metrics/HTML 报告生成
  *   （包括 splitReportFile、parseMetricsFromExecutions、saveMetrics、
  *     printMetricsSummary、renderReport），与 Midscene CLI 并行执行
  *
  * 根因：原方案中 setImmediate 无法让同步阻塞代码（如 splitReportFile）异步化，
- *       进程会挂起等待解析完成才退出。fork() 彻底隔离重操作，
+ *       进程会挂起等待解析完成才退出。spawn() + detached 彻底隔离重操作，
  *       主进程只需等待 Midscene CLI 完成即可退出。
  */
 
@@ -195,7 +195,7 @@ async function runMidscene(
       }
 
       // spawn() 子进程：隔离耗时的报告解析，与主进程完全解耦
-      // detached: true + stdio: inherit 让子进程独立于父进程，主进程立即 resolve/reject
+      // detached: true + stdio: ignore 让子进程独立于父进程，主进程立即 resolve/reject
       // process.execPath + --import tsx 是 tsx 官方推荐的子进程 TypeScript 运行方式
       const parserChild: ChildProcess = spawn(
         process.execPath,
@@ -208,7 +208,7 @@ async function runMidscene(
           String(scriptEndTime),
           projectRoot,
         ],
-        { detached: true, stdio: "inherit" },
+        { detached: true, stdio: ["ignore", "ignore", "ignore"] },
       );
 
       // unref() 让父进程退出时不等待子进程
