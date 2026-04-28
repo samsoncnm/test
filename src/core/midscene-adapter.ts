@@ -30,6 +30,7 @@ export async function createExplorationSession(
   maxSteps = 20,
   headless = true,
   deepLocate = false,
+  replanningCycleLimit = 20,
 ): Promise<ExplorationSession> {
   const config = getMidsceneConfig();
   const warnings = checkOptionalEnvVars();
@@ -67,8 +68,8 @@ export async function createExplorationSession(
     cache: { id: "nl-script-explore", strategy: "read-write" },
     // P1 优化：截图缩放 3 倍（2880x1536 → 960x512），Qwen3-VL token 预计从 ~2800 → ~420
     screenshotShrinkFactor: SCREENSHOT_SHRINK_FACTOR,
-    // P1 优化：限制重规划次数，避免多次重复 AI 调用
-    replanningCycleLimit: 1,
+    // explore 模式默认 20（对齐 SDK 默认值），run 模式在 run.ts 中独立设为 1
+    replanningCycleLimit,
   });
 
   log("success", "Midscene Agent 初始化完成");

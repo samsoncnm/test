@@ -32,6 +32,7 @@ program
   .option("--headful", "使用有头模式（显示浏览器窗口），方便录制和调试")
   .option("--deep-locate", "启用深度定位（deepLocate），适合复杂页面，精确度更高但速度较慢")
   .option("--auto-save", "执行后自动生成脚本名称并保存")
+  .option("--replanning-limit <number>", "最大重规划次数，复杂多步骤指令可调大（默认 20）", "20")
   .action(async (target, instruction, options) => {
     try {
       await runExplore({
@@ -41,6 +42,7 @@ program
         deepLocate: options.deepLocate ?? false,
         instruction: instruction ?? undefined,
         autoSave: options.autoSave ?? false,
+        replanningLimit: Number.parseInt(options.replanningLimit, 10),
       });
     } catch (err) {
       console.error(`${pc.red("[ERROR]")} ${err instanceof Error ? err.message : String(err)}`);

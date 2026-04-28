@@ -90,8 +90,10 @@ export async function runExplore(params: {
   instruction?: string;
   /** 自动保存：执行完成后自动生成名称并保存脚本 */
   autoSave?: boolean;
+  /** 最大重规划次数，默认 20（对齐 SDK 默认值） */
+  replanningLimit?: number;
 }): Promise<void> {
-  const { target, maxSteps = 20, deepLocate = false, instruction, autoSave = false } = params;
+  const { target, maxSteps = 20, deepLocate = false, instruction, autoSave = false, replanningLimit = 20 } = params;
 
   logSection("🧭 探索模式");
   log("info", `目标: ${target}`);
@@ -131,7 +133,7 @@ export async function runExplore(params: {
   });
 
   try {
-    session = await createExplorationSession(url, maxSteps, params.headless ?? true, deepLocate);
+    session = await createExplorationSession(url, maxSteps, params.headless ?? true, deepLocate, replanningLimit);
 
     // --- 非交互模式（传入 instruction 时跳过交互循环） ---
     if (instruction) {
