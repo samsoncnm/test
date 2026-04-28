@@ -57,7 +57,7 @@ const MODEL_PRICING: Record<string, { inputPer1M: number; outputPer1M: number }>
 };
 
 function estimateCost(usage: TaskUsage): number {
-  const pricing = MODEL_PRICING[usage.modelName] ?? MODEL_PRICING["default"];
+  const pricing = MODEL_PRICING[usage.modelName] ?? MODEL_PRICING["default"]!;
   return (
     (usage.promptTokens / 1_000_000) * pricing.inputPer1M +
     (usage.completionTokens / 1_000_000) * pricing.outputPer1M

@@ -107,9 +107,9 @@ export async function runScript(
   if (!hasBaseScript) {
     if (!doc.agent) doc.agent = {};
     const agent = doc.agent as Record<string, unknown>;
-    if (options.headful) agent.headed = true;
-    if (options.keepWindow) agent.keepWindow = true;
-    if (options.noCache) agent.cache = false;
+    if (options?.headful) agent.headed = true;
+    if (options?.keepWindow) agent.keepWindow = true;
+    if (options?.noCache) agent.cache = false;
     // P1 优化：截图缩放 3 倍（2880x1536 → 960x512），token 预计从 ~2800 → ~420
     agent.screenshotShrinkFactor = 3;
     // P1 优化：限制重规划次数，避免多次重复 AI 调用
