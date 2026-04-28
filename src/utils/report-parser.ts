@@ -50,8 +50,7 @@ function extractRecentExecutions(
     // 提取 midscene_web_dump 标签
     // Midscene 每次状态变化都追加一个 dump 快照，同一个 execution 会出现多次
     // 用 Map 去重，后出现的覆盖先出现的（最终状态）
-    const dumpTagRe =
-      /<script type="midscene_web_dump"[^>]*>([\s\S]*?)<\/script>/g;
+    const dumpTagRe = /<script type="midscene_web_dump"[^>]*>([\s\S]*?)<\/script>/g;
     const execMap = new Map<string, Record<string, unknown>>();
     let sdkVersion = "unknown";
     let foundAnyDump = false;
@@ -241,6 +240,7 @@ export function parseReportFile(
             usage: task.usage,
             searchAreaUsage: task.searchAreaUsage,
             output: task.output,
+            hitBy: task.hitBy,
             recorder: task.recorder,
             uiContext: task.uiContext,
             log: task.log,
@@ -290,6 +290,7 @@ function rawExecutionsToParseResult(rawExecs: Record<string, unknown>[]): Parsed
           usage: task.usage,
           searchAreaUsage: task.searchAreaUsage,
           output: task.output,
+          hitBy: task.hitBy,
           recorder: task.recorder,
           uiContext: task.uiContext,
           log: task.log,
@@ -476,9 +477,9 @@ export function parseMetricsFromExecutions(params: {
     stepMap.get(groupKey)!.tasks.push(rawTask);
 
     // B3: 检测缓存命中（hitBy.from === "Cache"）
+    // hitBy 在 task 顶层（与 output 同级），不在 output 内部
     const taskRecord = rawTask as Record<string, unknown>;
-    const output = taskRecord.output as Record<string, unknown> | undefined;
-    const hitBy = output?.hitBy as Record<string, unknown> | undefined;
+    const hitBy = taskRecord.hitBy as Record<string, unknown> | undefined;
     if (hitBy?.from === "Cache") {
       stepMap.get(groupKey)!.hitByCache = true;
       // 缓存命中时 SDK 不调用 AI，估算节省约 2836 tokens（截图 vision input）
@@ -686,7 +687,10 @@ export function parseMetricsFromExecutions(params: {
   let skipCount = 0;
   let assertCount = 0;
   let estimatedSavedTokens = 0;
-  const modelMap = new Map<string, { tokens: number; aiTime: number }>();
+  const modelMap = new Map<
+    string,
+    { tokens: number; prompt: number; completion: number; aiTime: number }
+  >();
 
   for (const step of steps) {
     totalAiTimeMs += step.aiTimeMs;
@@ -701,9 +705,11 @@ export function parseMetricsFromExecutions(params: {
       totalTokens += step.usage.totalTokens;
       totalCachedTokens += step.usage.cachedTokens;
       const key = `${step.usage.modelName}:${step.usage.intent}`;
-      const prev = modelMap.get(key) ?? { tokens: 0, aiTime: 0 };
+      const prev = modelMap.get(key) ?? { tokens: 0, prompt: 0, completion: 0, aiTime: 0 };
       modelMap.set(key, {
         tokens: prev.tokens + step.usage.totalTokens,
+        prompt: prev.prompt + step.usage.promptTokens,
+        completion: prev.completion + step.usage.completionTokens,
         aiTime: prev.aiTime + step.aiTimeMs,
       });
     }
@@ -756,6 +762,8 @@ export function parseMetricsFromExecutions(params: {
       intent,
       steps: steps.length,
       totalTokens: val.tokens,
+      promptTokens: val.prompt,
+      completionTokens: val.completion,
       totalAiTimeMs: val.aiTime,
     };
   });

@@ -106,6 +106,8 @@ export interface MetricsReport {
       intent: string;
       steps: number;
       totalTokens: number;
+      promptTokens: number;
+      completionTokens: number;
       totalAiTimeMs: number;
     }>;
   };

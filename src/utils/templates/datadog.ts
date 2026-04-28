@@ -106,6 +106,15 @@ function computeConsecutivePasses(history: HistoryEntry[]): number {
   return count;
 }
 
+function computeConsecutivePassesBefore(history: HistoryEntry[]): number {
+  let count = 0;
+  for (let i = 1; i < history.length; i++) {
+    if (history[i]!.status === "passed") count++;
+    else break;
+  }
+  return count;
+}
+
 // ── 步骤行渲染 ────────────────────────────────────────────────────────────────
 
 function renderStepRow(
@@ -356,11 +365,16 @@ function renderHistoryTrend(history: HistoryEntry[]): string {
     history.reduce((a, h) => a + h.durationMs, 0) / history.length / 1000,
   );
 
-  const consecutivePasses = computeConsecutivePasses(history);
+  const currentStatus = history[0]?.status;
+  const currentStreak = computeConsecutivePasses(history);
+  const passesBeforeFailure = computeConsecutivePassesBefore(history);
+
   const consecutiveHint =
-    consecutivePasses > 0
-      ? `<span class="flex items-center gap-1 text-[var(--status-pass)]"><i data-lucide="arrow-up" class="w-3 h-3"></i>${consecutivePasses}次连续通过后出现本次失败</span>`
-      : "";
+    currentStatus === "failed" && passesBeforeFailure > 0
+      ? `<span class="flex items-center gap-1 text-[var(--status-fail)]"><i data-lucide="alert-triangle" class="w-3 h-3"></i>连续通过 ${passesBeforeFailure} 次后首次失败</span>`
+      : currentStreak >= 3
+        ? `<span class="flex items-center gap-1 text-[var(--status-pass)]"><i data-lucide="check-circle" class="w-3 h-3"></i>已连续通过 ${currentStreak} 次</span>`
+        : "";
 
   return `
     <div class="p-4">
@@ -390,37 +404,45 @@ function renderTokenBreakdown(report: MetricsReport): string {
   const tokenBars =
     steps.length > 0
       ? steps
-          .map((s) => {
+          .map((s, idx) => {
             const pct = totalTokens > 0 ? ((s.usage?.totalTokens ?? 0) / totalTokens) * 100 : 0;
             let color = "bg-blue-500/70";
-            if (s.status === "failed") color = "bg-[var(--status-fail)]/80";
+            if (s.hitByCache) color = "bg-gray-600/50";
+            else if (s.status === "failed") color = "bg-[var(--status-fail)]/80";
             else if (s.status === "skipped" || s.status === "cancelled")
               color = "bg-[var(--status-skip-bg)]";
+            const tooltip = s.hitByCache
+              ? `第 ${idx + 1} 步: 缓存命中，未消耗 Token`
+              : `第 ${idx + 1} 步: ${s.usage?.totalTokens ?? 0} Token`;
+            if (pct === 0 && !s.hitByCache) return "";
             const barWidth = pct > 0 ? `${pct.toFixed(1)}%` : "2%";
-            return `<div class="${color} h-full" style="width: ${barWidth};" title="第 ${steps.indexOf(s) + 1} 步: ${s.usage?.totalTokens ?? 0} Token"></div>`;
+            return `<div class="${color} h-full" style="width: ${barWidth};" title="${tooltip}"></div>`;
           })
           .join("")
       : "";
 
-  // 成本估算
+  // 成本估算：遍历所有模型，使用实际 prompt/completion 拆分
   let costCard = "";
-  const primaryUsage = summary.modelBreakdown[0];
-  if (primaryUsage && totalTokens > 0) {
-    const usage: TaskUsage = {
-      promptTokens: primaryUsage.totalTokens,
-      completionTokens: 0,
-      totalTokens,
-      cachedTokens: 0,
-      timeCostMs: 0,
-      modelName: primaryUsage.modelName,
-      intent: primaryUsage.intent,
-    };
-    const cost = estimateCost(usage);
+  if (summary.modelBreakdown.length > 0 && totalTokens > 0) {
+    let totalCost = 0;
+    const modelNames: string[] = [];
+    for (const m of summary.modelBreakdown) {
+      if (!modelNames.includes(m.modelName)) modelNames.push(m.modelName);
+      totalCost += estimateCost({
+        promptTokens: m.promptTokens,
+        completionTokens: m.completionTokens,
+        totalTokens: m.totalTokens,
+        cachedTokens: 0,
+        timeCostMs: 0,
+        modelName: m.modelName,
+        intent: m.intent,
+      });
+    }
     costCard = `
         <div class="bg-[var(--bg-base)] rounded p-3 border border-[var(--border)]">
           <div class="text-xs text-[var(--text-muted)] mb-1">成本估算</div>
-          <div class="text-2xl font-bold mono text-purple-400">~$${cost.toFixed(4)}</div>
-          <div class="text-xs text-[var(--text-muted)] mt-1">${escapeHtml(primaryUsage.modelName)}</div>
+          <div class="text-2xl font-bold mono text-purple-400">~$${totalCost.toFixed(4)}</div>
+          <div class="text-xs text-[var(--text-muted)] mt-1">${escapeHtml(modelNames.join(" + "))}</div>
         </div>`;
   }
 
@@ -433,9 +455,9 @@ function renderTokenBreakdown(report: MetricsReport): string {
           <div class="text-xs text-[var(--text-muted)] mt-1">共 ${summary.totalSteps} 步</div>
         </div>
         <div class="bg-[var(--bg-base)] rounded p-3 border border-[var(--border)]">
-          <div class="text-xs text-[var(--text-muted)] mb-1">缓存 Token</div>
-          <div class="text-2xl font-bold mono text-[var(--text-muted)]">${summary.totalCachedTokens.toLocaleString()}</div>
-          <div class="text-xs text-[var(--text-muted)] mt-1">${summary.totalCachedTokens > 0 ? `缓存率: ${Math.round((summary.totalCachedTokens / summary.totalTokens) * 100)}%` : "未使用缓存"}</div>
+          <div class="text-xs text-[var(--text-muted)] mb-1">缓存命中</div>
+          <div class="text-2xl font-bold mono ${summary.hitByCacheCount > 0 ? "text-[var(--status-pass)]" : "text-[var(--text-muted)]"}">${summary.hitByCacheCount}</div>
+          <div class="text-xs text-[var(--text-muted)] mt-1">${summary.hitByCacheCount > 0 ? `约节省 ${summary.estimatedSavedTokens.toLocaleString()} Token` : "未使用缓存"}</div>
         </div>
         <div class="bg-[var(--bg-base)] rounded p-3 border border-[var(--border)]">
           <div class="text-xs text-[var(--text-muted)] mb-1">每步平均</div>
@@ -460,6 +482,7 @@ function renderTokenBreakdown(report: MetricsReport): string {
         <div class="flex justify-between mt-1 text-xs text-[var(--text-muted)]">
           <span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-blue-500/70"></span> 通过</span>
           <span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-[var(--status-fail)]/80"></span> 失败</span>
+          <span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-gray-600/50"></span> 缓存</span>
           <span class="flex items-center gap-1"><span class="w-2 h-2 rounded bg-[var(--status-skip-bg)]"></span> 跳过</span>
         </div>
       </div>`
@@ -818,16 +841,10 @@ export function renderDatadogReport(report: MetricsReport, history: HistoryEntry
       <span class="mono">${escapeHtml(report.environment.sdkVersion)}</span>
     </div>
     <div class="flex items-center gap-4">
-      <a href="#" onclick="alert('JSON report: see midscene_run/output/metrics/');return false" class="flex items-center gap-1 hover:text-[var(--brand)] transition-colors">
+      <span class="flex items-center gap-1 text-[var(--text-muted)]">
         <i data-lucide="file-text" class="w-3 h-3"></i>
-        JSON 报告
-      </a>
-      <a href="#" onclick="alert('Share: copy link to clipboard (TODO)');return false" class="flex items-center gap-1 hover:text-[var(--brand)] transition-colors">
-        <i data-lucide="share-2" class="w-3 h-3"></i>
-        分享
-      </a>
-      <span class="w-2 h-2 rounded-full bg-[var(--brand)]"></span>
-      <span>Datadog 风格</span>
+        JSON 报告: midscene_run/output/metrics/
+      </span>
     </div>
   </footer>
 
