@@ -50,16 +50,19 @@ function formatDate(iso: string): string {
 
 // ── 成本估算 ─────────────────────────────────────────────────────────────────
 
-const MODEL_PRICING: Record<string, { inputPer1M: number; outputPer1M: number }> = {
-  "qwen3-vl-plus": { inputPer1M: 0.04, outputPer1M: 0.16 },
-  "qwen3-32b": { inputPer1M: 0.0004, outputPer1M: 0.0012 },
-  default: { inputPer1M: 0.01, outputPer1M: 0.03 },
+// 单位：元/百万 Token（人民币，来源：阿里云百炼官方定价）
+const MODEL_PRICING: Record<string, { inputPer1M: number; cachedPer1M: number; outputPer1M: number }> = {
+  "qwen3-vl-plus": { inputPer1M: 1, cachedPer1M: 0.2, outputPer1M: 10 },
+  "qwen3-32b": { inputPer1M: 0.4, cachedPer1M: 0.1, outputPer1M: 1.2 },
+  default: { inputPer1M: 1, cachedPer1M: 0.2, outputPer1M: 10 },
 };
 
 function estimateCost(usage: TaskUsage): number {
   const pricing = MODEL_PRICING[usage.modelName] ?? MODEL_PRICING["default"]!;
+  const nonCachedPrompt = Math.max(0, usage.promptTokens - usage.cachedTokens);
   return (
-    (usage.promptTokens / 1_000_000) * pricing.inputPer1M +
+    (nonCachedPrompt / 1_000_000) * pricing.inputPer1M +
+    (usage.cachedTokens / 1_000_000) * pricing.cachedPer1M +
     (usage.completionTokens / 1_000_000) * pricing.outputPer1M
   );
 }
@@ -155,7 +158,7 @@ function renderStepRow(
     : "";
 
   const cacheWarning = step.hitByCache
-    ? `<span class="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs rounded" title="使用了缓存 xpath，元素可能已变化"><i data-lucide="cache" class="w-3 h-3"></i> 缓存</span>`
+    ? `<span class="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs rounded" title="使用了缓存 xpath，元素可能已变化"><i data-lucide="database" class="w-3 h-3"></i> 缓存</span>`
     : "";
 
   const assertMark = step.isAssert
@@ -163,10 +166,6 @@ function renderStepRow(
     : "";
 
   const tokens = step.usage?.totalTokens;
-  const isCached = step.hitByCache || (!step.usage && step.wallTimeMs < 10000);
-  const cacheTag = isCached
-    ? `<span class="ml-1 inline-flex items-center gap-0.5 px-1 py-0.5 bg-green-500/20 text-green-300 text-[10px] rounded font-medium">[C]</span>`
-    : "";
 
   let html = `
     <tr class="${rowClass} cursor-pointer transition-colors">
@@ -184,7 +183,7 @@ function renderStepRow(
       <td class="px-3 py-2.5 text-right mono text-xs text-[var(--text-muted)]">${step.aiTimeMs > 0 ? formatDuration(step.aiTimeMs) : "--"}</td>
       <td class="px-3 py-2.5 text-right mono text-xs text-[var(--text-muted)]">${step.subTasks}</td>
       <td class="px-3 py-2.5 text-right">
-        <span class="mono text-xs">${tokens ? tokensToStr(tokens) : "--"}</span>${cacheTag}
+        <span class="mono text-xs">${tokens ? tokensToStr(tokens) : "--"}</span>
       </td>
       <td class="px-3 py-2.5 text-center">
         ${chevronBtn}
@@ -432,7 +431,7 @@ function renderTokenBreakdown(report: MetricsReport): string {
         promptTokens: m.promptTokens,
         completionTokens: m.completionTokens,
         totalTokens: m.totalTokens,
-        cachedTokens: 0,
+        cachedTokens: m.cachedTokens,
         timeCostMs: 0,
         modelName: m.modelName,
         intent: m.intent,
@@ -441,7 +440,7 @@ function renderTokenBreakdown(report: MetricsReport): string {
     costCard = `
         <div class="bg-[var(--bg-base)] rounded p-3 border border-[var(--border)]">
           <div class="text-xs text-[var(--text-muted)] mb-1">成本估算</div>
-          <div class="text-2xl font-bold mono text-purple-400">~$${totalCost.toFixed(4)}</div>
+          <div class="text-2xl font-bold mono text-purple-400">~¥${totalCost.toFixed(4)}</div>
           <div class="text-xs text-[var(--text-muted)] mt-1">${escapeHtml(modelNames.join(" + "))}</div>
         </div>`;
   }

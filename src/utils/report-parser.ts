@@ -331,6 +331,28 @@ function normalizeExecName(name: string): string {
     .trim();
 }
 
+const EXEC_PREFIX_MAP: Record<string, string> = {
+  tap: "点击",
+  input: "输入到",
+  locate: "定位",
+  assert: "断言",
+  sleep: "等待",
+  scroll: "滚动",
+  hover: "悬停",
+  keyboardpress: "按键",
+  doubleclick: "双击",
+  rightclick: "右键点击",
+};
+
+function friendlyFromExecName(execName: string): string {
+  const m = execName.match(
+    /^(Tap|Input|Locate|Assert|Sleep|Scroll|Hover|KeyboardPress|DoubleClick|RightClick)\s*[-–—]\s*(.+)$/i,
+  );
+  if (!m || !m[1] || !m[2]) return execName;
+  const prefix = EXEC_PREFIX_MAP[m[1].toLowerCase()] ?? m[1];
+  return `${prefix} ${m[2]}`;
+}
+
 /** 从 task 参数推断 userInstruction
  * 源码证据：midscene_run/report/1.execution.json — Locate 任务用 param.prompt，
  * Action Space Input 任务用 param.value + param.locate.description
@@ -340,28 +362,33 @@ function inferUserInstruction(
   execName: string,
 ): string {
   const param = (rawTask as Record<string, unknown>).param as Record<string, unknown> | undefined;
-  if (!param) return execName;
+  if (!param) return friendlyFromExecName(execName);
   const subType = (rawTask as Record<string, unknown>).subType as string | undefined;
 
-  if (subType === "Locate" || subType === "Plan") {
-    return String(param.prompt ?? param.userInstruction ?? execName);
+  if (subType === "Plan") {
+    return String(param.prompt ?? param.userInstruction ?? friendlyFromExecName(execName));
+  }
+  if (subType === "Locate") {
+    // param.prompt 只有元素名（如 "账号输入框"），不含动作上下文
+    // execName 如 "Tap - 账号输入框" 包含完整信息，从 execName 解析
+    return friendlyFromExecName(execName);
   }
   if (subType === "Input") {
     const value = String(param.value ?? "");
     const locate = (param.locate as Record<string, unknown>)?.description as string | undefined;
-    return locate ? `输入"${value}"到${locate}` : `输入"${value}"`;
+    return locate ? `输入"${value}"到 ${locate}` : friendlyFromExecName(execName);
   }
   if (subType === "Tap") {
     const locate = (param.locate as Record<string, unknown>)?.description as string | undefined;
-    return locate ? `点击${locate}` : execName;
+    return locate ? `点击 ${locate}` : friendlyFromExecName(execName);
   }
   if (subType === "Sleep") {
     return `等待${param.timeMs ?? 3000}ms`;
   }
   if (subType === "Assert") {
-    return String(param.dataDemand ?? execName);
+    return String(param.dataDemand ?? friendlyFromExecName(execName));
   }
-  return execName;
+  return friendlyFromExecName(execName);
 }
 
 /** 辅助：将 Midscene usage 字段映射为 TaskUsage */
@@ -689,7 +716,7 @@ export function parseMetricsFromExecutions(params: {
   let estimatedSavedTokens = 0;
   const modelMap = new Map<
     string,
-    { tokens: number; prompt: number; completion: number; aiTime: number }
+    { tokens: number; prompt: number; completion: number; cached: number; aiTime: number }
   >();
 
   for (const step of steps) {
@@ -705,11 +732,12 @@ export function parseMetricsFromExecutions(params: {
       totalTokens += step.usage.totalTokens;
       totalCachedTokens += step.usage.cachedTokens;
       const key = `${step.usage.modelName}:${step.usage.intent}`;
-      const prev = modelMap.get(key) ?? { tokens: 0, prompt: 0, completion: 0, aiTime: 0 };
+      const prev = modelMap.get(key) ?? { tokens: 0, prompt: 0, completion: 0, cached: 0, aiTime: 0 };
       modelMap.set(key, {
         tokens: prev.tokens + step.usage.totalTokens,
         prompt: prev.prompt + step.usage.promptTokens,
         completion: prev.completion + step.usage.completionTokens,
+        cached: prev.cached + step.usage.cachedTokens,
         aiTime: prev.aiTime + step.aiTimeMs,
       });
     }
@@ -764,6 +792,7 @@ export function parseMetricsFromExecutions(params: {
       totalTokens: val.tokens,
       promptTokens: val.prompt,
       completionTokens: val.completion,
+      cachedTokens: val.cached,
       totalAiTimeMs: val.aiTime,
     };
   });

@@ -108,6 +108,7 @@ export interface MetricsReport {
       totalTokens: number;
       promptTokens: number;
       completionTokens: number;
+      cachedTokens: number;
       totalAiTimeMs: number;
     }>;
   };
